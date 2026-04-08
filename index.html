@@ -364,11 +364,17 @@ let state = {
 };
 
 // ============================================================
-// API (Google Sheets via /api/sheets proxy)
+// API (Google Sheets via /api/sheets proxy or direct GAS URL)
 // ============================================================
+// 注入點：GitHub Action 會在部署時替換下方的字串
+const APPS_SCRIPT_URL = '/api/sheets'; 
+
 async function apiCall(params) {
   const qs = new URLSearchParams(params).toString();
-  const r = await fetch('/api/sheets?' + qs);
+  // 如果 APPS_SCRIPT_URL 是 /api/sheets，則使用相對路徑（Vercel 模式）
+  // 否則使用絕對路徑（GitHub Pages 模式）
+  const url = APPS_SCRIPT_URL.startsWith('http') ? APPS_SCRIPT_URL : APPS_SCRIPT_URL;
+  const r = await fetch(url + '?' + qs);
   if (!r.ok) throw new Error('HTTP ' + r.status);
   const json = await r.json();
   if (json.error) throw new Error(json.error);
