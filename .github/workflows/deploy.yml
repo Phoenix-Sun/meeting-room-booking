@@ -1,0 +1,54 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Inject APPS_SCRIPT_URL into index.html
+        run: |
+          # 檢查 Secret 是否存在
+          if [ -z "${{ secrets.APPS_SCRIPT_URL }}" ]; then
+            echo "Error: APPS_SCRIPT_URL secret is not set in GitHub Settings!"
+            exit 1
+          fi
+          
+          # 將 index.html 中的 API 代理路徑替換為真實 GAS URL
+          # 我們這裡使用 sed 替換原本前端 fetch 的目標
+          # 原本是: fetch('/api/sheets?' + qs)
+          # 替換後: fetch('YOUR_GAS_URL?' + qs)
+          sed -i "s|'/api/sheets?|'${{ secrets.APPS_SCRIPT_URL }}?|g" index.html
+          
+          # 同時移除錯誤提示中的 Vercel 相關字樣，避免誤導
+          sed -i 's|APPS_SCRIPT_URL 環境變數已在 Vercel 設定|APPS_SCRIPT_URL 已透過 GitHub Action 注入|g' index.html
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
