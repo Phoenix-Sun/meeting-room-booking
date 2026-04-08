@@ -389,7 +389,7 @@ function normalizeRow(obj) {
       continue;
     }
     
-    // 1. 處理 ISO 字串格式 (2026-04-07T16:00:00.000Z)
+    // 1. 處理 ISO 字串格式 (例如你提供的 2026-04-08T06:27:14.278Z)
     if (typeof val === 'string' && val.includes('T') && val.endsWith('Z')) {
       const d = new Date(val);
       if (!isNaN(d.getTime())) {
@@ -399,18 +399,29 @@ function normalizeRow(obj) {
                    String(d.getDate()).padStart(2, '0');
           continue;
         } else if (k === 'startTime' || k === 'endTime') {
-          out[k] = String(d.getHours()).padStart(2, '0') + ':' + 
-                   String(d.getMinutes()).padStart(2, '0');
+          // --- 自動對齊 30 分鐘格點 ---
+          let totalMins = d.getHours() * 60 + d.getMinutes();
+          // 將分鐘數四捨五入至最近的 30 分鐘
+          let snappedMins = Math.round(totalMins / 30) * 30;
+          let h = Math.floor(snappedMins / 60);
+          let m = snappedMins % 60;
+          out[k] = String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
           continue;
         }
       }
     }
 
-    // 2. 處理普通時間字串 (例如 14:30:00 或 14:30)
+    // 2. 處理普通時間字串 (例如 14:30:00)
     if ((k === 'startTime' || k === 'endTime') && typeof val === 'string') {
       const parts = val.trim().split(':');
       if (parts.length >= 2) {
-        out[k] = parts[0].padStart(2, '0') + ':' + parts[1].padStart(2, '0');
+        let h = parseInt(parts[0], 10);
+        let m = parseInt(parts[1], 10);
+        let totalMins = h * 60 + m;
+        let snappedMins = Math.round(totalMins / 30) * 30;
+        let sh = Math.floor(snappedMins / 60);
+        let sm = snappedMins % 60;
+        out[k] = String(sh).padStart(2, '0') + ':' + String(sm).padStart(2, '0');
         continue;
       }
     }
