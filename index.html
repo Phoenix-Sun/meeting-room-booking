@@ -371,8 +371,7 @@ const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbymhiqAg2kD53Vy
 
 async function apiCall(params) {
   const qs = new URLSearchParams(params).toString();
-  // 如果 APPS_SCRIPT_URL 是 /api/sheets，則使用相對路徑（Vercel 模式）
-  // 否則使用絕對路徑（GitHub Pages 模式）
+  // 增加 v= 防止快取，確保資料即時連動
   const url = APPS_SCRIPT_URL.startsWith('http') ? APPS_SCRIPT_URL : APPS_SCRIPT_URL;
   const r = await fetch(url + '?' + qs + '&v=' + Date.now());
   if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -390,7 +389,7 @@ function normalizeRow(obj) {
       continue;
     }
     
-    // 如果是 ISO 字串 (例如 2026-04-07T16:00:00.000Z)
+    // 偵測日期物件或是 ISO 字串 (處理下午時間與跨日問題)
     if (typeof val === 'string' && val.includes('T') && val.endsWith('Z')) {
       const d = new Date(val);
       if (!isNaN(d.getTime())) {
@@ -656,7 +655,8 @@ function renderWeekGrid(days, roomId) {
     const lunchLabelStyle = lunch ? 'background:#fffbeb;color:#b45309;' : '';
 
     // Time label
-    html += `<div class="time-label" style="${lunchLabelStyle}">${slot}${slot==='12:00'?'<div style="font-size:9px;color:#d97706;margin-top:1px;">午休</div>':''}</div>`;
+    const isLunch = slot === '12:00' || slot === '12:30';
+    html += `<div class="time-label" style="${lunchLabelStyle}">${slot}${isLunch?'<div style="font-size:9px;color:#d97706;margin-top:1px;">午休</div>':''}</div>`;
 
     // Day cells
     days.forEach((d) => {
@@ -669,7 +669,7 @@ function renderWeekGrid(days, roomId) {
           <div class="grid-cell booked" style="position:relative;grid-row:span ${spans};" onclick="showBookingDetail('${bk.id}')">
             <div class="booking-bar" style="background:${room.bg};color:${room.color};border-left-color:${room.color};">
               <div class="bk-topic">${bk.topic}</div>
-              <div class="bk-user">${bk.applicant} · ${bk.startTime}~${bk.endTime}</div>
+              <div class="bk-user">${bk.startTime}~${bk.endTime}</div>
             </div>
           </div>`;
       } else {
@@ -1223,21 +1223,37 @@ function populateTimeOptions() {
   });
 }
 
-function openNewBooking(date=null, time=null, roomId=null) {
-  populateTimeOptions();
+function resetModal() {
   document.getElementById('editBookingId').value = '';
   document.getElementById('bkTopic').value = '';
-  document.getElementById('bkApplicant').value = state.currentUser?.name || '';
-  document.getElementById('bkDate').value = date || fmt(new Date());
-  document.getElementById('bkRoom').value = roomId || state.selectedRoom;
+  document.getElementById('bkApplicant').value = '';
+  document.getElementById('bkApplicant').disabled = false;
+  document.getElementById('bkDate').value = fmt(new Date());
+  document.getElementById('bkRoom').value = state.selectedRoom;
   document.getElementById('bkNote').value = '';
-  document.getElementById('bkStart').value = time || '09:00';
+  document.getElementById('bkStart').value = '09:00';
+  document.getElementById('bkEnd').value = '10:00';
+}
+
+function openNewBooking(date=null, time=null, roomId=null) {
+  resetModal();
+  if (date) document.getElementById('bkDate').value = date;
+  if (time) document.getElementById('bkStart').value = time;
+  if (roomId) document.getElementById('bkRoom').value = roomId;
+  
   // Set end time 1 hr after start
   const slots = getTimeSlots();
   const si = slots.indexOf(time || '09:00');
-  document.getElementById('bkEnd').value = slots[Math.min(si+2, slots.length-1)];
+  if (si !== -1) document.getElementById('bkEnd').value = slots[Math.min(si+2, slots.length-1)];
+
   document.getElementById('modalTitle').textContent = '新增預約';
   document.getElementById('deleteBookingBtn').style.display = 'none';
+  
+  // 自動帶入申請人姓名
+  if (state.currentUser) {
+    document.getElementById('bkApplicant').value = state.currentUser.name;
+    document.getElementById('bkApplicant').disabled = (state.currentUser.role !== 'admin');
+  }
   document.getElementById('conflictWarning').style.display = 'none';
   updateRoomInfo();
   setModalSubtitle();
