@@ -1,0 +1,1385 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>會議室預約系統</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Noto Sans TC', 'sans-serif'] }
+        }
+      }
+    }
+  </script>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: 'Noto Sans TC', sans-serif; background: #f0f4f8; }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #f1f5f9; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+
+    /* Sidebar */
+    .sidebar { width: 220px; min-height: 100vh; background: #1e293b; color: white; flex-shrink: 0; }
+    .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 20px; cursor: pointer;
+      border-radius: 8px; margin: 2px 8px; transition: all .15s; font-size: 14px; font-weight: 500; }
+    .nav-item:hover { background: rgba(255,255,255,.1); }
+    .nav-item.active { background: #3b82f6; }
+    .nav-item .icon { font-size: 18px; width: 24px; text-align: center; }
+
+    /* Grid */
+    .booking-grid { display: grid; overflow: auto; }
+    .grid-cell {
+      min-height: 32px; border-right: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0;
+      position: relative; cursor: pointer; transition: background .1s;
+    }
+    .grid-cell:hover { background: #eff6ff; }
+    .grid-cell.lunch { background: #f8fafc; cursor: default; }
+    .grid-cell.lunch:hover { background: #f8fafc; }
+    .grid-cell.booked { cursor: pointer; }
+    .time-label {
+      font-size: 11px; color: #64748b; text-align: right; padding: 7px 8px 0 0;
+      border-right: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; background: white;
+      white-space: nowrap; min-height: 32px;
+    }
+    .day-header {
+      background: white; border-right: 1px solid #e2e8f0; border-bottom: 2px solid #e2e8f0;
+      padding: 8px 4px; text-align: center; font-weight: 600; font-size: 13px;
+      position: sticky; top: 0; z-index: 10;
+    }
+    .day-header.today { background: #eff6ff; color: #2563eb; }
+    .corner-cell {
+      background: white; border-right: 1px solid #e2e8f0; border-bottom: 2px solid #e2e8f0;
+      position: sticky; top: 0; left: 0; z-index: 20;
+    }
+
+    /* Booking bar */
+    .booking-bar {
+      position: absolute; inset: 1px; border-radius: 4px;
+      padding: 3px 6px; font-size: 11px; font-weight: 600;
+      overflow: hidden; cursor: pointer; z-index: 5;
+      display: flex; flex-direction: column; justify-content: center;
+      border-left: 3px solid rgba(0,0,0,.2);
+      transition: opacity .15s, transform .15s;
+      line-height: 1.3;
+    }
+    .booking-bar:hover { opacity: .9; transform: scale(1.01); }
+    .booking-bar .bk-topic { font-size: 11px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .booking-bar .bk-user { font-size: 10px; opacity: .8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* Span booking (multi-cell) */
+    .span-container { position: relative; }
+
+    /* Room tags */
+    .room-tag { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 20px;
+      font-size: 12px; font-weight: 500; cursor: pointer; transition: all .15s; border: 2px solid transparent; }
+    .room-tag:hover { transform: translateY(-1px); }
+    .room-tag.selected { border-color: rgba(0,0,0,.25); box-shadow: 0 2px 8px rgba(0,0,0,.15); }
+
+    /* Modal */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 100;
+      display: flex; align-items: center; justify-content: center; padding: 20px; }
+    .modal-box { background: white; border-radius: 16px; max-width: 480px; width: 100%;
+      max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,.3); }
+    .modal-header { padding: 20px 24px 0; display: flex; align-items: center; justify-content: space-between; }
+    .modal-body { padding: 16px 24px; }
+    .modal-footer { padding: 0 24px 20px; display: flex; gap: 8px; justify-content: flex-end; }
+
+    /* Form */
+    .form-label { font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 4px; display: block; }
+    .form-input {
+      width: 100%; border: 1.5px solid #e5e7eb; border-radius: 8px; padding: 9px 12px;
+      font-size: 14px; font-family: inherit; transition: border-color .15s;
+      outline: none; color: #1f2937;
+    }
+    .form-input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,.1); }
+
+    /* Buttons */
+    .btn { padding: 9px 18px; border-radius: 8px; font-size: 13px; font-weight: 600;
+      cursor: pointer; border: none; transition: all .15s; font-family: inherit; }
+    .btn-primary { background: #3b82f6; color: white; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-danger { background: #ef4444; color: white; }
+    .btn-danger:hover { background: #dc2626; }
+    .btn-ghost { background: transparent; color: #6b7280; border: 1.5px solid #e5e7eb; }
+    .btn-ghost:hover { background: #f9fafb; }
+    .btn-sm { padding: 6px 12px; font-size: 12px; }
+
+    /* Badge */
+    .badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 12px;
+      font-size: 11px; font-weight: 600; }
+
+    /* Card */
+    .card { background: white; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,.07); }
+
+    /* Stats card */
+    .stat-card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.07); }
+    .stat-number { font-size: 32px; font-weight: 700; color: #1e293b; }
+    .stat-label { font-size: 12px; color: #64748b; font-weight: 500; margin-top: 4px; }
+
+    /* Toast */
+    .toast { position: fixed; bottom: 24px; right: 24px; z-index: 200;
+      background: #1e293b; color: white; padding: 12px 20px; border-radius: 10px;
+      font-size: 14px; font-weight: 500; box-shadow: 0 4px 20px rgba(0,0,0,.3);
+      transform: translateY(100px); opacity: 0; transition: all .3s; }
+    .toast.show { transform: translateY(0); opacity: 1; }
+    .toast.success { background: #10b981; }
+    .toast.error { background: #ef4444; }
+
+    /* Login */
+    .login-card { background: white; border-radius: 20px; padding: 40px; width: 100%;
+      max-width: 400px; box-shadow: 0 20px 60px rgba(0,0,0,.15); }
+
+    /* Report chart bar */
+    .chart-bar { height: 20px; border-radius: 4px; min-width: 4px; transition: width .5s; }
+
+    /* Print */
+    @media print {
+      .sidebar, .no-print { display: none !important; }
+      .main-content { margin-left: 0 !important; }
+    }
+
+    /* Transition */
+    .fade-in { animation: fadeIn .2s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* Drag select */
+    .selecting { background: #bfdbfe !important; }
+
+    /* Weekend dim */
+    .day-header.weekend { color: #94a3b8; background: #f8fafc; }
+    .grid-cell.weekend { background: #fafafa; }
+    .grid-cell.weekend:hover { background: #f1f5f9; }
+  </style>
+</head>
+<body>
+
+<!-- Toast -->
+<div id="toast" class="toast"></div>
+
+<!-- LOGIN VIEW -->
+<div id="loginView" style="display:none; min-height:100vh; background:linear-gradient(135deg,#1e3a8a,#1e40af,#3b82f6); align-items:center; justify-content:center;">
+  <div class="login-card fade-in">
+    <div style="text-align:center; margin-bottom:28px;">
+      <div style="font-size:40px; margin-bottom:8px;">🏢</div>
+      <h1 style="font-size:22px; font-weight:700; color:#1e293b;">會議室預約系統</h1>
+      <p style="font-size:13px; color:#64748b; margin-top:6px;">Meeting Room Booking System</p>
+    </div>
+    <div style="margin-bottom:16px;">
+      <label class="form-label">帳號（Email）</label>
+      <input id="loginEmail" class="form-input" type="email" placeholder="your@email.com" value="">
+    </div>
+    <div style="margin-bottom:24px;">
+      <label class="form-label">密碼</label>
+      <input id="loginPassword" class="form-input" type="password" placeholder="••••••••">
+    </div>
+    <button class="btn btn-primary" style="width:100%; padding:12px;" onclick="doLogin()">登入</button>
+    <div style="margin-top:16px; padding:12px; background:#f8fafc; border-radius:8px; font-size:12px; color:#64748b;">
+      <strong>示範帳號：</strong><br>
+      admin@org.com / admin123（管理員）<br>
+      user@org.com / user123（一般使用者）
+    </div>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="appView" style="display:none; min-height:100vh;">
+
+  <!-- Sidebar -->
+  <div class="sidebar" style="display:flex; flex-direction:column;">
+    <div style="padding:20px 16px 12px;">
+      <div style="font-size:16px; font-weight:700; color:white;">🏢 會議室系統</div>
+      <div style="font-size:11px; color:#94a3b8; margin-top:2px;" id="currentDateLabel"></div>
+    </div>
+    <nav style="flex:1; padding:8px 0;">
+      <div class="nav-item active" id="nav-book" onclick="switchView('book')">
+        <span class="icon">📅</span> 預約會議室
+      </div>
+      <div class="nav-item" id="nav-overview" onclick="switchView('overview')">
+        <span class="icon">🗓</span> 今日總覽
+      </div>
+      <div class="nav-item" id="nav-mybookings" onclick="switchView('mybookings')">
+        <span class="icon">📋</span> 我的預約
+      </div>
+      <div class="nav-item" id="nav-report" onclick="switchView('report')">
+        <span class="icon">📊</span> 統計報表
+      </div>
+      <div class="nav-item" id="nav-admin" onclick="switchView('admin')" style="display:none;">
+        <span class="icon">⚙️</span> 帳號管理
+      </div>
+    </nav>
+    <div style="padding:12px 16px; border-top:1px solid rgba(255,255,255,.1);">
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+        <div style="width:32px;height:32px;border-radius:50%;background:#3b82f6;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;" id="userAvatar">U</div>
+        <div>
+          <div style="font-size:13px; font-weight:600;" id="userName">使用者</div>
+          <div style="font-size:11px; color:#94a3b8;" id="userEmail">-</div>
+        </div>
+      </div>
+      <button class="btn btn-ghost" style="width:100%;color:#94a3b8;border-color:#334155;font-size:12px;" onclick="doLogout()">登出</button>
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <div style="flex:1; overflow:auto; padding:24px;" id="mainContent">
+    <!-- Dynamic content rendered here -->
+  </div>
+</div>
+
+<!-- BOOKING MODAL -->
+<div id="bookingModal" class="modal-overlay" style="display:none;" onclick="closeModalOutside(event)">
+  <div class="modal-box fade-in" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <div>
+        <h3 style="font-size:17px;font-weight:700;color:#1e293b;" id="modalTitle">新增預約</h3>
+        <p style="font-size:12px;color:#64748b;margin-top:3px;" id="modalSubtitle"></p>
+      </div>
+      <button onclick="closeModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#94a3b8;padding:4px;">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="editBookingId">
+      <div style="margin-bottom:14px;">
+        <label class="form-label">會議主題 <span style="color:#ef4444">*</span></label>
+        <input id="bkTopic" class="form-input" type="text" placeholder="請輸入會議主題">
+      </div>
+      <div style="margin-bottom:14px;">
+        <label class="form-label">申請人 <span style="color:#ef4444">*</span></label>
+        <input id="bkApplicant" class="form-input" type="text" placeholder="請輸入申請人姓名">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+        <div>
+          <label class="form-label">日期</label>
+          <input id="bkDate" class="form-input" type="date">
+        </div>
+        <div>
+          <label class="form-label">會議室</label>
+          <select id="bkRoom" class="form-input" onchange="updateRoomInfo()">
+            <optgroup label="實體會議室 - 3樓">
+              <option value="3f-large">3F 大會議室</option>
+              <option value="3f-medium">3F 中會議室</option>
+            </optgroup>
+            <optgroup label="實體會議室 - 13樓">
+              <option value="13f-mobile">13F 行動會議室 (8人)</option>
+              <option value="13f-large">13F 大會議室</option>
+              <option value="13f-broadcast">13F 直播室</option>
+            </optgroup>
+            <optgroup label="實體會議室 - 15樓">
+              <option value="15f-classroom">15F 大教室</option>
+            </optgroup>
+            <optgroup label="ZOOM 線上會議室">
+              <option value="zoom-00">ZOOM_00 (100人)</option>
+              <option value="zoom-01">ZOOM_01 (300人)</option>
+              <option value="zoom-02">ZOOM_02 (100人)</option>
+            </optgroup>
+          </select>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+        <div>
+          <label class="form-label">開始時間</label>
+          <select id="bkStart" class="form-input" onchange="checkConflictPreview()"></select>
+        </div>
+        <div>
+          <label class="form-label">結束時間</label>
+          <select id="bkEnd" class="form-input" onchange="checkConflictPreview()"></select>
+        </div>
+      </div>
+      <div style="margin-bottom:14px;">
+        <label class="form-label">備註（選填）</label>
+        <textarea id="bkNote" class="form-input" rows="2" placeholder="其他備註說明" style="resize:none;"></textarea>
+      </div>
+      <div id="conflictWarning" style="display:none; padding:10px 12px; background:#fef2f2; border:1px solid #fecaca; border-radius:8px; font-size:12px; color:#dc2626; margin-bottom:10px;"></div>
+      <div id="roomInfoBar" style="padding:10px 12px; background:#f0f9ff; border:1px solid #bae6fd; border-radius:8px; font-size:12px; color:#0369a1;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-danger btn-sm" id="deleteBookingBtn" onclick="deleteBooking()" style="display:none;">刪除</button>
+      <button class="btn btn-ghost btn-sm" onclick="closeModal()">取消</button>
+      <button class="btn btn-primary btn-sm" onclick="saveBooking()">儲存預約</button>
+    </div>
+  </div>
+</div>
+
+<!-- BOOKING DETAIL MODAL -->
+<div id="detailModal" class="modal-overlay" style="display:none;" onclick="closeDetailModalOutside(event)">
+  <div class="modal-box fade-in" onclick="event.stopPropagation()" style="max-width:400px;">
+    <div class="modal-header">
+      <h3 style="font-size:17px;font-weight:700;color:#1e293b;">預約詳情</h3>
+      <button onclick="closeDetailModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#94a3b8;padding:4px;">✕</button>
+    </div>
+    <div class="modal-body" id="detailContent"></div>
+    <div class="modal-footer" id="detailActions"></div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// CONSTANTS & DATA
+// ============================================================
+const ROOMS = [
+  { id:'3f-large',      name:'大會議室',     floor:'3F',   type:'physical', capacity:null,  color:'#3b82f6', bg:'#dbeafe' },
+  { id:'3f-medium',     name:'中會議室',     floor:'3F',   type:'physical', capacity:null,  color:'#06b6d4', bg:'#cffafe' },
+  { id:'13f-mobile',    name:'行動會議室',   floor:'13F',  type:'physical', capacity:8,     color:'#8b5cf6', bg:'#ede9fe' },
+  { id:'13f-large',     name:'大會議室',     floor:'13F',  type:'physical', capacity:null,  color:'#6366f1', bg:'#e0e7ff' },
+  { id:'13f-broadcast', name:'直播室',       floor:'13F',  type:'physical', capacity:null,  color:'#ec4899', bg:'#fce7f3' },
+  { id:'15f-classroom', name:'大教室',       floor:'15F',  type:'physical', capacity:null,  color:'#f59e0b', bg:'#fef3c7' },
+  { id:'zoom-00',       name:'ZOOM_00',      floor:'ZOOM', type:'zoom',     capacity:100,   color:'#10b981', bg:'#d1fae5' },
+  { id:'zoom-01',       name:'ZOOM_01',      floor:'ZOOM', type:'zoom',     capacity:300,   color:'#059669', bg:'#a7f3d0' },
+  { id:'zoom-02',       name:'ZOOM_02',      floor:'ZOOM', type:'zoom',     capacity:100,   color:'#0d9488', bg:'#ccfbf1' },
+];
+
+const TIME_SLOTS = [
+  '08:30','09:00','09:30','10:00','10:30','11:00','11:30',
+  'LUNCH',
+  '13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','17:30'
+];
+
+const WEEKDAYS = ['一','二','三','四','五'];
+
+// ============================================================
+// STATE
+// ============================================================
+let state = {
+  currentUser: null,
+  currentView: 'book',
+  currentWeekStart: null, // Monday of selected week
+  selectedRoom: '3f-large',
+  bookings: [],
+  users: [],
+};
+
+// ============================================================
+// STORAGE
+// ============================================================
+function saveData() {
+  localStorage.setItem('mrb_bookings', JSON.stringify(state.bookings));
+  localStorage.setItem('mrb_users', JSON.stringify(state.users));
+}
+function loadData() {
+  state.bookings = JSON.parse(localStorage.getItem('mrb_bookings') || '[]');
+  state.users = JSON.parse(localStorage.getItem('mrb_users') || '[]');
+  if (!state.users.length) initDemoData();
+}
+function initDemoData() {
+  state.users = [
+    { id:'u1', name:'系統管理員', email:'admin@org.com', password:'admin123', role:'admin', dept:'資訊部' },
+    { id:'u2', name:'一般使用者', email:'user@org.com',  password:'user123',  role:'user',  dept:'業務部' },
+    { id:'u3', name:'王小明', email:'wang@org.com',  password:'wang123',  role:'user',  dept:'行政部' },
+  ];
+  // Seed some sample bookings for this week
+  const today = new Date();
+  const mon = getWeekStart(today);
+  const fmt = d => d.toISOString().split('T')[0];
+  const addDays = (d,n) => { const r=new Date(d); r.setDate(r.getDate()+n); return r; };
+  state.bookings = [
+    { id:'b1', roomId:'3f-large',   date:fmt(mon),          startTime:'09:00', endTime:'10:00', topic:'資訊會議', applicant:'系統管理員', userId:'u1', note:'', createdAt:new Date().toISOString() },
+    { id:'b2', roomId:'3f-large',   date:fmt(addDays(mon,1)),startTime:'09:30', endTime:'10:00', topic:'業務會議', applicant:'一般使用者', userId:'u2', note:'', createdAt:new Date().toISOString() },
+    { id:'b3', roomId:'3f-large',   date:fmt(addDays(mon,1)),startTime:'11:00', endTime:'12:00', topic:'主管會議', applicant:'王小明',     userId:'u3', note:'', createdAt:new Date().toISOString() },
+    { id:'b4', roomId:'zoom-00',    date:fmt(addDays(mon,2)),startTime:'09:00', endTime:'09:30', topic:'留店會議-中一區', applicant:'一般使用者', userId:'u2', note:'', createdAt:new Date().toISOString() },
+    { id:'b5', roomId:'zoom-01',    date:fmt(addDays(mon,2)),startTime:'10:00', endTime:'11:30', topic:'賴志昶錄課', applicant:'王小明',     userId:'u3', note:'RK.孔', createdAt:new Date().toISOString() },
+    { id:'b6', roomId:'zoom-02',    date:fmt(addDays(mon,2)),startTime:'10:00', endTime:'11:00', topic:'AI生態圈教學 #161', applicant:'系統管理員', userId:'u1', note:'', createdAt:new Date().toISOString() },
+    { id:'b7', roomId:'zoom-00',    date:fmt(addDays(mon,2)),startTime:'16:30', endTime:'17:30', topic:'資訊會議_文忠', applicant:'系統管理員', userId:'u1', note:'', createdAt:new Date().toISOString() },
+    { id:'b8', roomId:'15f-classroom', date:fmt(addDays(mon,3)),startTime:'14:00', endTime:'17:00', topic:'業務發展會議', applicant:'王小明', userId:'u3', note:'', createdAt:new Date().toISOString() },
+  ];
+  saveData();
+}
+
+// ============================================================
+// AUTH
+// ============================================================
+function doLogin() {
+  const email = document.getElementById('loginEmail').value.trim();
+  const pass  = document.getElementById('loginPassword').value;
+  const user  = state.users.find(u => u.email === email && u.password === pass);
+  if (!user) { showToast('帳號或密碼錯誤','error'); return; }
+  state.currentUser = user;
+  sessionStorage.setItem('mrb_session', JSON.stringify(user));
+  startApp();
+}
+function doLogout() {
+  state.currentUser = null;
+  sessionStorage.removeItem('mrb_session');
+  document.getElementById('appView').style.display = 'none';
+  document.getElementById('loginView').style.display = 'flex';
+}
+function checkSession() {
+  const s = sessionStorage.getItem('mrb_session');
+  if (s) { state.currentUser = JSON.parse(s); return true; }
+  return false;
+}
+function startApp() {
+  document.getElementById('loginView').style.display = 'none';
+  document.getElementById('appView').style.display = 'flex';
+  document.getElementById('userName').textContent = state.currentUser.name;
+  document.getElementById('userEmail').textContent = state.currentUser.email;
+  document.getElementById('userAvatar').textContent = state.currentUser.name.charAt(0);
+  if (state.currentUser.role === 'admin') {
+    document.getElementById('nav-admin').style.display = 'flex';
+  }
+  state.currentWeekStart = getWeekStart(new Date());
+  updateDateLabel();
+  switchView('book');
+}
+
+// ============================================================
+// DATE UTILITIES
+// ============================================================
+function getWeekStart(d) {
+  const dt = new Date(d);
+  const day = dt.getDay();
+  const diff = day === 0 ? -6 : 1 - day; // Mon = start
+  dt.setDate(dt.getDate() + diff);
+  dt.setHours(0,0,0,0);
+  return dt;
+}
+function addDays(d, n) {
+  const r = new Date(d); r.setDate(r.getDate() + n); return r;
+}
+function fmt(d) { return d.toISOString().split('T')[0]; }
+function fmtDisplay(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  return `${d.getMonth()+1}月${d.getDate()}日`;
+}
+function getWeekDays(weekStart) {
+  return Array.from({length:5}, (_,i) => addDays(weekStart, i));
+}
+function isToday(dateStr) {
+  return dateStr === fmt(new Date());
+}
+function isWeekend(d) { const day = d.getDay(); return day === 0 || day === 6; }
+function getMondayStr(dateStr) { return fmt(getWeekStart(new Date(dateStr + 'T00:00:00'))); }
+function updateDateLabel() {
+  const now = new Date();
+  document.getElementById('currentDateLabel').textContent =
+    `${now.getFullYear()}年${now.getMonth()+1}月${now.getDate()}日`;
+}
+
+// ============================================================
+// TIME UTILITIES
+// ============================================================
+function timeToMins(t) {
+  if (!t || t === 'LUNCH') return NaN;
+  const [h,m] = t.split(':').map(Number); return h*60+m;
+}
+function minsToTime(m) {
+  return `${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`;
+}
+function getTimeSlots() { return TIME_SLOTS.filter(t => t !== 'LUNCH'); }
+function slotIndex(t) { return getTimeSlots().indexOf(t); }
+
+// Calculate grid row span accounting for the LUNCH separator row
+function calcGridSpan(startTime, endTime) {
+  const startIdx = TIME_SLOTS.indexOf(startTime);
+  let endIdx = TIME_SLOTS.indexOf(endTime);
+  if (endIdx === -1) {
+    // e.g. endTime='12:00' not in TIME_SLOTS — treat it as just before LUNCH
+    const lunchIdx = TIME_SLOTS.indexOf('LUNCH');
+    endIdx = lunchIdx; // ends right at lunch separator
+  }
+  // Span = rows between startIdx and endIdx (both in TIME_SLOTS)
+  if (endIdx > startIdx) return endIdx - startIdx;
+  // Fallback: time-based (for afternoon-only or morning-only bookings)
+  return Math.max(1, Math.round((timeToMins(endTime) - timeToMins(startTime)) / 30));
+}
+
+// Booking overlaps another?
+function timesOverlap(s1,e1,s2,e2) {
+  return timeToMins(s1) < timeToMins(e2) && timeToMins(e1) > timeToMins(s2);
+}
+function getConflicts(roomId, date, startTime, endTime, excludeId=null) {
+  return state.bookings.filter(b =>
+    b.roomId === roomId && b.date === date &&
+    b.id !== excludeId &&
+    timesOverlap(startTime, endTime, b.startTime, b.endTime)
+  );
+}
+
+// ============================================================
+// VIEW SWITCHER
+// ============================================================
+function switchView(view) {
+  state.currentView = view;
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  const navEl = document.getElementById('nav-' + view);
+  if (navEl) navEl.classList.add('active');
+  const mc = document.getElementById('mainContent');
+  mc.innerHTML = '';
+  if (view === 'book') renderBookView();
+  else if (view === 'overview') renderOverviewView();
+  else if (view === 'mybookings') renderMyBookingsView();
+  else if (view === 'report') renderReportView();
+  else if (view === 'admin') renderAdminView();
+}
+
+// ============================================================
+// BOOK VIEW
+// ============================================================
+function renderBookView() {
+  const mc = document.getElementById('mainContent');
+  const days = getWeekDays(state.currentWeekStart);
+  const room = ROOMS.find(r => r.id === state.selectedRoom);
+
+  mc.innerHTML = `
+    <div class="fade-in">
+      <!-- Header -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+        <div>
+          <h2 style="font-size:20px;font-weight:700;color:#1e293b;">預約會議室</h2>
+          <p style="font-size:13px;color:#64748b;margin-top:2px;">點擊時間格即可快速預約</p>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <button class="btn btn-ghost btn-sm" onclick="prevWeek()">← 上週</button>
+          <button class="btn btn-ghost btn-sm" onclick="goToday()">今天</button>
+          <button class="btn btn-ghost btn-sm" onclick="nextWeek()">下週 →</button>
+          <button class="btn btn-primary btn-sm" onclick="openNewBooking()">＋ 新增預約</button>
+        </div>
+      </div>
+
+      <!-- Week Label -->
+      <div style="text-align:center;margin-bottom:16px;font-size:13px;color:#64748b;font-weight:600;">
+        ${fmt(days[0]).replace(/-/g,'/')} ～ ${fmt(days[4]).replace(/-/g,'/')}
+      </div>
+
+      <!-- Room Selector - Physical -->
+      <div class="card" style="padding:16px;margin-bottom:16px;">
+        <div style="font-size:12px;font-weight:700;color:#64748b;margin-bottom:10px;letter-spacing:.05em;">實體會議室</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">
+          ${['3F','13F','15F'].map(floor =>
+            ROOMS.filter(r=>r.type==='physical'&&r.floor===floor).map(r=>`
+              <div class="room-tag ${r.id===state.selectedRoom?'selected':''}"
+                style="background:${r.bg};color:${r.color};"
+                onclick="selectRoom('${r.id}')">
+                <span style="font-size:10px;opacity:.7;">${r.floor}</span>
+                ${r.name}${r.capacity?` (${r.capacity}人)`:''}
+              </div>`).join('')
+          ).join('')}
+        </div>
+        <div style="font-size:12px;font-weight:700;color:#64748b;margin-bottom:10px;letter-spacing:.05em;margin-top:4px;">ZOOM 線上會議室</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;">
+          ${ROOMS.filter(r=>r.type==='zoom').map(r=>`
+            <div class="room-tag ${r.id===state.selectedRoom?'selected':''}"
+              style="background:${r.bg};color:${r.color};"
+              onclick="selectRoom('${r.id}')">
+              ${r.name} (${r.capacity}人)
+            </div>`).join('')}
+        </div>
+      </div>
+
+      <!-- Grid -->
+      <div class="card" style="overflow:hidden;">
+        <div style="padding:14px 16px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;gap:10px;">
+          <div style="width:12px;height:12px;border-radius:3px;background:${room.color};"></div>
+          <span style="font-size:14px;font-weight:600;color:#1e293b;">${room.floor} ${room.name}</span>
+          ${room.capacity?`<span class="badge" style="background:${room.bg};color:${room.color};">最多 ${room.capacity} 人</span>`:''}
+        </div>
+        <div style="overflow-x:auto;">
+          ${renderWeekGrid(days, state.selectedRoom)}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderWeekGrid(days, roomId) {
+  const slots = TIME_SLOTS;
+  const bookings = state.bookings.filter(b => b.roomId === roomId);
+
+  let html = `<div style="display:grid;grid-template-columns:64px repeat(5,1fr);min-width:600px;">`;
+
+  // Corner
+  html += `<div class="corner-cell" style="height:44px;"></div>`;
+
+  // Day headers
+  days.forEach((d,i) => {
+    const ds = fmt(d);
+    const today = isToday(ds);
+    html += `<div class="day-header ${today?'today':''}">
+      <div style="font-size:11px;color:${today?'#3b82f6':'#94a3b8'};font-weight:500;">週${WEEKDAYS[i]}</div>
+      <div>${d.getMonth()+1}/${d.getDate()}</div>
+    </div>`;
+  });
+
+  // Rows
+  slots.forEach((slot, si) => {
+    if (slot === 'LUNCH') {
+      html += `<div class="time-label" style="display:flex;align-items:center;justify-content:flex-end;padding-right:8px;font-size:10px;color:#94a3b8;background:#f8fafc;border-right:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;min-height:24px;">午休</div>`;
+      days.forEach(() => {
+        html += `<div class="grid-cell lunch" style="background:#f8fafc;min-height:24px;display:flex;align-items:center;justify-content:center;"><span style="font-size:10px;color:#cbd5e1;">── 午休時間 ──</span></div>`;
+      });
+      return;
+    }
+
+    // Time label
+    html += `<div class="time-label">${slot}</div>`;
+
+    // Day cells
+    days.forEach((d, di) => {
+      const ds = fmt(d);
+      // Find booking that starts at this slot
+      const bk = bookings.find(b => b.date === ds && b.startTime === slot);
+      if (bk) {
+        // Calculate span (accounting for LUNCH separator row)
+        const spans = calcGridSpan(bk.startTime, bk.endTime);
+        const room = ROOMS.find(r=>r.id===roomId);
+        const isOwn = state.currentUser && bk.userId === state.currentUser.id;
+        html += `
+          <div class="grid-cell booked" style="position:relative;grid-row:span ${spans};" onclick="showBookingDetail('${bk.id}')">
+            <div class="booking-bar" style="background:${room.bg};color:${room.color};border-left-color:${room.color};">
+              <div class="bk-topic">${bk.topic}</div>
+              <div class="bk-user">${bk.applicant} · ${bk.startTime}~${bk.endTime}</div>
+            </div>
+          </div>`;
+      } else {
+        // Check if this slot is covered by a spanning booking
+        const covered = bookings.find(b => {
+          if (b.date !== ds) return false;
+          if (b.startTime === slot) return false;
+          return timeToMins(b.startTime) < timeToMins(slot) && timeToMins(b.endTime) > timeToMins(slot);
+        });
+        if (!covered) {
+          html += `<div class="grid-cell" onclick="quickBook('${ds}','${slot}','${roomId}')">
+            <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;opacity:0;transition:.15s;" class="add-hint">
+              <span style="font-size:16px;color:#3b82f6;">＋</span>
+            </div>
+          </div>`;
+        }
+      }
+    });
+  });
+
+  html += `</div>`;
+
+  // Add hover effect via CSS
+  html += `<style>
+    .grid-cell:not(.lunch):not(.booked):hover .add-hint { opacity:1 !important; }
+  </style>`;
+
+  return html;
+}
+
+function selectRoom(roomId) {
+  state.selectedRoom = roomId;
+  renderBookView();
+}
+function prevWeek() { state.currentWeekStart = addDays(state.currentWeekStart,-7); renderBookView(); }
+function nextWeek() { state.currentWeekStart = addDays(state.currentWeekStart,7); renderBookView(); }
+function goToday()  { state.currentWeekStart = getWeekStart(new Date()); renderBookView(); }
+
+// Quick book on cell click
+function quickBook(date, time, roomId) {
+  openNewBooking(date, time, roomId);
+}
+
+// ============================================================
+// OVERVIEW VIEW  (all rooms, today)
+// ============================================================
+function renderOverviewView() {
+  const mc = document.getElementById('mainContent');
+  const today = fmt(new Date());
+  const slots = TIME_SLOTS;
+
+  let html = `<div class="fade-in">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+      <div>
+        <h2 style="font-size:20px;font-weight:700;color:#1e293b;">今日總覽</h2>
+        <p style="font-size:13px;color:#64748b;margin-top:2px;">所有會議室今日使用狀況 — ${fmtDisplay(today)}</p>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="openNewBooking()">＋ 新增預約</button>
+    </div>
+
+    <!-- Physical Rooms -->
+    <h3 style="font-size:14px;font-weight:700;color:#374151;margin-bottom:10px;">🏢 實體會議室</h3>
+    <div class="card" style="overflow:hidden;margin-bottom:20px;">
+      <div style="overflow-x:auto;">
+        ${renderOverviewGrid(today, ROOMS.filter(r=>r.type==='physical'))}
+      </div>
+    </div>
+
+    <!-- ZOOM Rooms -->
+    <h3 style="font-size:14px;font-weight:700;color:#374151;margin-bottom:10px;">💻 ZOOM 線上會議室</h3>
+    <div class="card" style="overflow:hidden;">
+      <div style="overflow-x:auto;">
+        ${renderOverviewGrid(today, ROOMS.filter(r=>r.type==='zoom'))}
+      </div>
+    </div>
+  </div>`;
+
+  mc.innerHTML = html;
+}
+
+function renderOverviewGrid(date, rooms) {
+  const slots = TIME_SLOTS;
+  const colW = Math.floor(100 / rooms.length);
+
+  let html = `<div style="display:grid;grid-template-columns:64px repeat(${rooms.length},1fr);min-width:${100+rooms.length*120}px;">`;
+
+  // Corner + Room headers
+  html += `<div class="corner-cell" style="height:44px;display:flex;align-items:center;justify-content:center;font-size:11px;color:#94a3b8;">時間</div>`;
+  rooms.forEach(r => {
+    html += `<div style="background:white;border-right:1px solid #e2e8f0;border-bottom:2px solid #e2e8f0;padding:8px 4px;text-align:center;position:sticky;top:0;z-index:10;">
+      <div style="font-size:10px;color:${r.color};font-weight:700;">${r.floor}</div>
+      <div style="font-size:13px;font-weight:600;color:#1e293b;">${r.name}</div>
+      ${r.capacity?`<div style="font-size:10px;color:#94a3b8;">${r.capacity}人</div>`:''}
+    </div>`;
+  });
+
+  slots.forEach(slot => {
+    if (slot === 'LUNCH') {
+      html += `<div class="time-label" style="background:#f8fafc;min-height:24px;display:flex;align-items:center;justify-content:flex-end;padding-right:8px;font-size:10px;color:#94a3b8;">午休</div>`;
+      rooms.forEach(() => {
+        html += `<div class="grid-cell lunch" style="min-height:24px;background:#f8fafc;"></div>`;
+      });
+      return;
+    }
+
+    html += `<div class="time-label">${slot}</div>`;
+    rooms.forEach(r => {
+      const bk = state.bookings.find(b => b.roomId===r.id && b.date===date && b.startTime===slot);
+      const covered = state.bookings.find(b =>
+        b.roomId===r.id && b.date===date && b.startTime !== slot &&
+        timeToMins(b.startTime) < timeToMins(slot) && timeToMins(b.endTime) > timeToMins(slot)
+      );
+      if (bk) {
+        const spans = calcGridSpan(bk.startTime, bk.endTime);
+        html += `<div class="grid-cell booked" style="grid-row:span ${spans};" onclick="showBookingDetail('${bk.id}')">
+          <div class="booking-bar" style="background:${r.bg};color:${r.color};border-left-color:${r.color};">
+            <div class="bk-topic">${bk.topic}</div>
+            <div class="bk-user">${bk.applicant}</div>
+          </div>
+        </div>`;
+      } else if (!covered) {
+        html += `<div class="grid-cell" onclick="quickBook('${date}','${slot}','${r.id}')"></div>`;
+      }
+    });
+  });
+
+  html += `</div>`;
+  return html;
+}
+
+// ============================================================
+// MY BOOKINGS VIEW
+// ============================================================
+function renderMyBookingsView() {
+  const mc = document.getElementById('mainContent');
+  const uid = state.currentUser.id;
+  const now = new Date();
+  const todayStr = fmt(now);
+
+  const myBks = state.bookings
+    .filter(b => b.userId === uid)
+    .sort((a,b) => (a.date+a.startTime).localeCompare(b.date+b.startTime));
+
+  const upcoming = myBks.filter(b => b.date >= todayStr);
+  const past     = myBks.filter(b => b.date < todayStr);
+
+  function bkRow(b) {
+    const room = ROOMS.find(r=>r.id===b.roomId);
+    const isPast = b.date < todayStr;
+    return `<div style="display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid #f1f5f9;transition:.15s;cursor:pointer;${isPast?'opacity:.6':''}"
+      onmouseenter="this.style.background='#f8fafc'" onmouseleave="this.style.background=''"
+      onclick="showBookingDetail('${b.id}')">
+      <div style="width:4px;height:50px;border-radius:2px;background:${room.color};flex-shrink:0;"></div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:14px;font-weight:600;color:#1e293b;">${b.topic}</div>
+        <div style="font-size:12px;color:#64748b;margin-top:2px;">
+          ${fmtDisplay(b.date)} · ${b.startTime}～${b.endTime}
+        </div>
+      </div>
+      <div style="text-align:right;flex-shrink:0;">
+        <div class="badge" style="background:${room.bg};color:${room.color};margin-bottom:4px;">${room.floor} ${room.name}</div>
+        <div style="font-size:11px;color:#94a3b8;">${b.applicant}</div>
+      </div>
+    </div>`;
+  }
+
+  mc.innerHTML = `<div class="fade-in">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+      <div>
+        <h2 style="font-size:20px;font-weight:700;color:#1e293b;">我的預約</h2>
+        <p style="font-size:13px;color:#64748b;margin-top:2px;">共 ${myBks.length} 筆</p>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="openNewBooking()">＋ 新增預約</button>
+    </div>
+
+    ${upcoming.length ? `
+      <h3 style="font-size:13px;font-weight:700;color:#374151;margin-bottom:10px;">即將到來（${upcoming.length}筆）</h3>
+      <div class="card" style="margin-bottom:20px;overflow:hidden;">
+        ${upcoming.map(bkRow).join('')}
+      </div>` : `
+      <div class="card" style="padding:40px;text-align:center;color:#94a3b8;margin-bottom:20px;">
+        <div style="font-size:32px;margin-bottom:8px;">📭</div>
+        <div>尚無即將到來的預約</div>
+      </div>`}
+
+    ${past.length ? `
+      <h3 style="font-size:13px;font-weight:700;color:#374151;margin-bottom:10px;">歷史紀錄（${past.length}筆）</h3>
+      <div class="card" style="overflow:hidden;">
+        ${past.map(bkRow).join('')}
+      </div>` : ''}
+  </div>`;
+}
+
+// ============================================================
+// REPORT VIEW
+// ============================================================
+function renderReportView() {
+  const mc = document.getElementById('mainContent');
+  const now = new Date();
+  const thisMonth = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const monthBks = state.bookings.filter(b => b.date.startsWith(thisMonth));
+  const todayBks = state.bookings.filter(b => b.date === fmt(now));
+
+  // Room utilization this month
+  const roomStats = ROOMS.map(r => {
+    const bks = monthBks.filter(b=>b.roomId===r.id);
+    const mins = bks.reduce((acc,b)=>acc+timeToMins(b.endTime)-timeToMins(b.startTime),0);
+    return { room:r, count:bks.length, hours:Math.round(mins/60*10)/10 };
+  }).sort((a,b)=>b.count-a.count);
+
+  const maxCount = Math.max(...roomStats.map(s=>s.count),1);
+
+  // Filter state
+  const filterDateFrom = document.getElementById('filterDateFrom')?.value || '';
+  const filterDateTo   = document.getElementById('filterDateTo')?.value || '';
+  const filterRoomId   = document.getElementById('filterRoomId')?.value || '';
+
+  let filtered = [...state.bookings].sort((a,b)=>(b.date+b.startTime).localeCompare(a.date+a.startTime));
+  if (filterDateFrom) filtered = filtered.filter(b=>b.date>=filterDateFrom);
+  if (filterDateTo)   filtered = filtered.filter(b=>b.date<=filterDateTo);
+  if (filterRoomId)   filtered = filtered.filter(b=>b.roomId===filterRoomId);
+
+  mc.innerHTML = `<div class="fade-in">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+      <div>
+        <h2 style="font-size:20px;font-weight:700;color:#1e293b;">統計報表</h2>
+        <p style="font-size:13px;color:#64748b;margin-top:2px;">${now.getFullYear()}年${now.getMonth()+1}月</p>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-ghost btn-sm" onclick="exportCSV()">⬇ 匯出 CSV</button>
+        <button class="btn btn-ghost btn-sm" onclick="exportICS()">📅 匯出行事曆</button>
+      </div>
+    </div>
+
+    <!-- Stats Cards -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px;">
+      <div class="stat-card">
+        <div class="stat-number">${state.bookings.length}</div>
+        <div class="stat-label">總預約數</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">${monthBks.length}</div>
+        <div class="stat-label">本月預約</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">${todayBks.length}</div>
+        <div class="stat-label">今日預約</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">${state.users.length}</div>
+        <div class="stat-label">使用人數</div>
+      </div>
+    </div>
+
+    <!-- Room Usage Chart -->
+    <div class="card" style="padding:20px;margin-bottom:20px;">
+      <h3 style="font-size:14px;font-weight:700;color:#374151;margin-bottom:14px;">本月各會議室使用次數</h3>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        ${roomStats.filter(s=>s.count>0).map(s=>`
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div style="width:120px;flex-shrink:0;font-size:12px;color:#374151;text-align:right;">
+              <span style="font-size:10px;color:${s.room.color};">${s.room.floor}</span> ${s.room.name}
+            </div>
+            <div style="flex:1;background:#f1f5f9;border-radius:4px;height:20px;overflow:hidden;">
+              <div class="chart-bar" style="background:${s.room.color};width:${Math.round(s.count/maxCount*100)}%;height:100%;"></div>
+            </div>
+            <div style="width:60px;font-size:12px;color:#64748b;text-align:right;">${s.count}次 / ${s.hours}h</div>
+          </div>`).join('')}
+        ${roomStats.every(s=>s.count===0)?'<div style="text-align:center;color:#94a3b8;font-size:13px;padding:20px;">本月尚無預約紀錄</div>':''}
+      </div>
+    </div>
+
+    <!-- Filter & Table -->
+    <div class="card" style="padding:20px;">
+      <h3 style="font-size:14px;font-weight:700;color:#374151;margin-bottom:14px;">預約紀錄查詢</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px;">
+        <div>
+          <label class="form-label">開始日期</label>
+          <input id="filterDateFrom" class="form-input" type="date" value="${filterDateFrom}" onchange="renderReportView()">
+        </div>
+        <div>
+          <label class="form-label">結束日期</label>
+          <input id="filterDateTo" class="form-input" type="date" value="${filterDateTo}" onchange="renderReportView()">
+        </div>
+        <div>
+          <label class="form-label">會議室</label>
+          <select id="filterRoomId" class="form-input" onchange="renderReportView()">
+            <option value="">全部會議室</option>
+            ${ROOMS.map(r=>`<option value="${r.id}" ${r.id===filterRoomId?'selected':''}>${r.floor} ${r.name}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead>
+            <tr style="background:#f8fafc;">
+              <th style="padding:10px 12px;text-align:left;font-weight:600;color:#374151;border-bottom:1px solid #e2e8f0;">日期</th>
+              <th style="padding:10px 12px;text-align:left;font-weight:600;color:#374151;border-bottom:1px solid #e2e8f0;">時間</th>
+              <th style="padding:10px 12px;text-align:left;font-weight:600;color:#374151;border-bottom:1px solid #e2e8f0;">會議室</th>
+              <th style="padding:10px 12px;text-align:left;font-weight:600;color:#374151;border-bottom:1px solid #e2e8f0;">主題</th>
+              <th style="padding:10px 12px;text-align:left;font-weight:600;color:#374151;border-bottom:1px solid #e2e8f0;">申請人</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${filtered.length===0 ?
+              `<tr><td colspan="5" style="padding:30px;text-align:center;color:#94a3b8;">無符合條件的紀錄</td></tr>` :
+              filtered.map(b=>{
+                const r=ROOMS.find(x=>x.id===b.roomId);
+                return `<tr style="border-bottom:1px solid #f1f5f9;cursor:pointer;" onclick="showBookingDetail('${b.id}')"
+                  onmouseenter="this.style.background='#f8fafc'" onmouseleave="this.style.background=''">
+                  <td style="padding:10px 12px;color:#374151;">${fmtDisplay(b.date)}</td>
+                  <td style="padding:10px 12px;color:#64748b;">${b.startTime}～${b.endTime}</td>
+                  <td style="padding:10px 12px;">
+                    <span class="badge" style="background:${r.bg};color:${r.color};">${r.floor} ${r.name}</span>
+                  </td>
+                  <td style="padding:10px 12px;color:#1e293b;font-weight:500;">${b.topic}</td>
+                  <td style="padding:10px 12px;color:#64748b;">${b.applicant}</td>
+                </tr>`;
+              }).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div style="margin-top:12px;font-size:12px;color:#94a3b8;">共 ${filtered.length} 筆紀錄</div>
+    </div>
+  </div>`;
+}
+
+// ============================================================
+// ADMIN VIEW
+// ============================================================
+function renderAdminView() {
+  if (!state.currentUser || state.currentUser.role !== 'admin') return;
+  const mc = document.getElementById('mainContent');
+
+  mc.innerHTML = `<div class="fade-in">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+      <div>
+        <h2 style="font-size:20px;font-weight:700;color:#1e293b;">帳號管理</h2>
+        <p style="font-size:13px;color:#64748b;margin-top:2px;">管理系統使用者</p>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="openAddUser()">＋ 新增帳號</button>
+    </div>
+    <div class="card" style="overflow:hidden;">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead>
+          <tr style="background:#f8fafc;">
+            <th style="padding:12px 16px;text-align:left;font-weight:600;color:#374151;border-bottom:1px solid #e2e8f0;">姓名</th>
+            <th style="padding:12px 16px;text-align:left;font-weight:600;color:#374151;border-bottom:1px solid #e2e8f0;">Email</th>
+            <th style="padding:12px 16px;text-align:left;font-weight:600;color:#374151;border-bottom:1px solid #e2e8f0;">部門</th>
+            <th style="padding:12px 16px;text-align:left;font-weight:600;color:#374151;border-bottom:1px solid #e2e8f0;">權限</th>
+            <th style="padding:12px 16px;text-align:left;font-weight:600;color:#374151;border-bottom:1px solid #e2e8f0;">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${state.users.map(u=>`
+            <tr style="border-bottom:1px solid #f1f5f9;">
+              <td style="padding:12px 16px;">
+                <div style="display:flex;align-items:center;gap:10px;">
+                  <div style="width:32px;height:32px;border-radius:50%;background:#3b82f6;display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:13px;">${u.name.charAt(0)}</div>
+                  <span style="font-weight:500;color:#1e293b;">${u.name}</span>
+                </div>
+              </td>
+              <td style="padding:12px 16px;color:#64748b;">${u.email}</td>
+              <td style="padding:12px 16px;color:#64748b;">${u.dept||'-'}</td>
+              <td style="padding:12px 16px;">
+                <span class="badge" style="${u.role==='admin'?'background:#fef3c7;color:#92400e;':'background:#f0fdf4;color:#166534;'}">${u.role==='admin'?'管理員':'使用者'}</span>
+              </td>
+              <td style="padding:12px 16px;">
+                <button class="btn btn-ghost btn-sm" onclick="editUser('${u.id}')" style="margin-right:4px;">編輯</button>
+                ${u.id!==state.currentUser.id?`<button class="btn btn-danger btn-sm" onclick="deleteUser('${u.id}')">刪除</button>`:''}
+              </td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Add/Edit User Modal placeholder -->
+    <div id="userFormArea" style="margin-top:20px;display:none;">
+      <div class="card" style="padding:20px;">
+        <h3 style="font-size:15px;font-weight:700;margin-bottom:16px;" id="userFormTitle">新增帳號</h3>
+        <input type="hidden" id="editUserId">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+          <div><label class="form-label">姓名</label><input id="uName" class="form-input" placeholder="姓名"></div>
+          <div><label class="form-label">部門</label><input id="uDept" class="form-input" placeholder="部門"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+          <div><label class="form-label">Email</label><input id="uEmail" class="form-input" type="email" placeholder="email@org.com"></div>
+          <div><label class="form-label">密碼</label><input id="uPassword" class="form-input" type="password" placeholder="設定密碼"></div>
+        </div>
+        <div style="margin-bottom:16px;">
+          <label class="form-label">權限</label>
+          <select id="uRole" class="form-input">
+            <option value="user">一般使用者</option>
+            <option value="admin">管理員</option>
+          </select>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+          <button class="btn btn-ghost btn-sm" onclick="document.getElementById('userFormArea').style.display='none'">取消</button>
+          <button class="btn btn-primary btn-sm" onclick="saveUser()">儲存</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function openAddUser() {
+  document.getElementById('userFormArea').style.display='block';
+  document.getElementById('userFormTitle').textContent='新增帳號';
+  document.getElementById('editUserId').value='';
+  ['uName','uDept','uEmail','uPassword'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('uRole').value='user';
+  document.getElementById('userFormArea').scrollIntoView({behavior:'smooth'});
+}
+function editUser(uid) {
+  const u = state.users.find(x=>x.id===uid);
+  if(!u) return;
+  document.getElementById('userFormArea').style.display='block';
+  document.getElementById('userFormTitle').textContent='編輯帳號';
+  document.getElementById('editUserId').value=u.id;
+  document.getElementById('uName').value=u.name;
+  document.getElementById('uDept').value=u.dept||'';
+  document.getElementById('uEmail').value=u.email;
+  document.getElementById('uPassword').value=u.password;
+  document.getElementById('uRole').value=u.role;
+  document.getElementById('userFormArea').scrollIntoView({behavior:'smooth'});
+}
+function saveUser() {
+  const uid = document.getElementById('editUserId').value;
+  const data = {
+    name: document.getElementById('uName').value.trim(),
+    dept: document.getElementById('uDept').value.trim(),
+    email: document.getElementById('uEmail').value.trim(),
+    password: document.getElementById('uPassword').value,
+    role: document.getElementById('uRole').value,
+  };
+  if (!data.name || !data.email || !data.password) { showToast('請填寫必要欄位','error'); return; }
+  if (uid) {
+    const i = state.users.findIndex(u=>u.id===uid);
+    state.users[i] = {...state.users[i], ...data};
+  } else {
+    state.users.push({id:'u'+Date.now(), ...data});
+  }
+  saveData();
+  showToast('帳號已儲存');
+  renderAdminView();
+}
+function deleteUser(uid) {
+  if (!confirm('確定刪除此帳號？')) return;
+  state.users = state.users.filter(u=>u.id!==uid);
+  saveData();
+  showToast('帳號已刪除');
+  renderAdminView();
+}
+
+// ============================================================
+// BOOKING MODAL
+// ============================================================
+function populateTimeOptions() {
+  const slots = getTimeSlots();
+  const starts = ['bkStart','bkEnd'];
+  starts.forEach(id => {
+    const sel = document.getElementById(id);
+    sel.innerHTML = slots.map(s=>`<option value="${s}">${s}</option>`).join('');
+  });
+}
+
+function openNewBooking(date=null, time=null, roomId=null) {
+  populateTimeOptions();
+  document.getElementById('editBookingId').value = '';
+  document.getElementById('bkTopic').value = '';
+  document.getElementById('bkApplicant').value = state.currentUser?.name || '';
+  document.getElementById('bkDate').value = date || fmt(new Date());
+  document.getElementById('bkRoom').value = roomId || state.selectedRoom;
+  document.getElementById('bkNote').value = '';
+  document.getElementById('bkStart').value = time || '09:00';
+  // Set end time 1 hr after start
+  const slots = getTimeSlots();
+  const si = slots.indexOf(time || '09:00');
+  document.getElementById('bkEnd').value = slots[Math.min(si+2, slots.length-1)];
+  document.getElementById('modalTitle').textContent = '新增預約';
+  document.getElementById('deleteBookingBtn').style.display = 'none';
+  document.getElementById('conflictWarning').style.display = 'none';
+  updateRoomInfo();
+  setModalSubtitle();
+  document.getElementById('bookingModal').style.display = 'flex';
+}
+
+function setModalSubtitle() {
+  const date = document.getElementById('bkDate').value;
+  const start = document.getElementById('bkStart').value;
+  const end   = document.getElementById('bkEnd').value;
+  const room  = ROOMS.find(r=>r.id===document.getElementById('bkRoom').value);
+  if (room) {
+    document.getElementById('modalSubtitle').textContent =
+      `${fmtDisplay(date)} · ${start}～${end} · ${room.floor} ${room.name}`;
+  }
+}
+
+function updateRoomInfo() {
+  const roomId = document.getElementById('bkRoom').value;
+  const room = ROOMS.find(r=>r.id===roomId);
+  if (!room) return;
+  document.getElementById('roomInfoBar').innerHTML =
+    `<strong>${room.floor} ${room.name}</strong>${room.capacity?` — 最多容納 ${room.capacity} 人`:''}`;
+  checkConflictPreview();
+  setModalSubtitle();
+}
+
+function checkConflictPreview() {
+  const roomId = document.getElementById('bkRoom').value;
+  const date   = document.getElementById('bkDate').value;
+  const start  = document.getElementById('bkStart').value;
+  const end    = document.getElementById('bkEnd').value;
+  const excludeId = document.getElementById('editBookingId').value;
+  if (!date || !start || !end) return;
+  if (timeToMins(start) >= timeToMins(end)) {
+    document.getElementById('conflictWarning').style.display='block';
+    document.getElementById('conflictWarning').textContent='⚠ 結束時間必須晚於開始時間';
+    return;
+  }
+  const conflicts = getConflicts(roomId, date, start, end, excludeId);
+  const warn = document.getElementById('conflictWarning');
+  if (conflicts.length) {
+    warn.style.display='block';
+    warn.innerHTML=`⚠ 時間衝突：${conflicts.map(c=>`「${c.topic}」(${c.startTime}~${c.endTime})`).join('、')}`;
+  } else {
+    warn.style.display='none';
+  }
+  setModalSubtitle();
+}
+
+function saveBooking() {
+  const topic = document.getElementById('bkTopic').value.trim();
+  const applicant = document.getElementById('bkApplicant').value.trim();
+  const date  = document.getElementById('bkDate').value;
+  const roomId= document.getElementById('bkRoom').value;
+  const start = document.getElementById('bkStart').value;
+  const end   = document.getElementById('bkEnd').value;
+  const note  = document.getElementById('bkNote').value.trim();
+  const editId= document.getElementById('editBookingId').value;
+
+  if (!topic || !applicant || !date || !start || !end) {
+    showToast('請填寫必要欄位','error'); return;
+  }
+  if (timeToMins(start) >= timeToMins(end)) {
+    showToast('結束時間必須晚於開始時間','error'); return;
+  }
+
+  const conflicts = getConflicts(roomId, date, start, end, editId);
+  if (conflicts.length) {
+    if (!confirm(`此時段有衝突（${conflicts[0].topic}），確定仍要儲存？`)) return;
+  }
+
+  if (editId) {
+    const i = state.bookings.findIndex(b=>b.id===editId);
+    state.bookings[i] = {...state.bookings[i], roomId, date, startTime:start, endTime:end, topic, applicant, note};
+  } else {
+    state.bookings.push({
+      id: 'b'+Date.now(),
+      roomId, date, startTime:start, endTime:end,
+      topic, applicant, userId: state.currentUser.id, note,
+      createdAt: new Date().toISOString()
+    });
+  }
+  saveData();
+  closeModal();
+  showToast(editId?'預約已更新':'預約成功 ✓','success');
+  switchView(state.currentView);
+}
+
+function deleteBooking() {
+  const editId = document.getElementById('editBookingId').value;
+  if (!editId) return;
+  if (!confirm('確定刪除此預約？')) return;
+  state.bookings = state.bookings.filter(b=>b.id!==editId);
+  saveData();
+  closeModal();
+  closeDetailModal();
+  showToast('預約已刪除');
+  switchView(state.currentView);
+}
+
+function closeModal() {
+  document.getElementById('bookingModal').style.display='none';
+}
+function closeModalOutside(e) {
+  if(e.target===document.getElementById('bookingModal')) closeModal();
+}
+
+// ============================================================
+// DETAIL MODAL
+// ============================================================
+function showBookingDetail(id) {
+  const b = state.bookings.find(x=>x.id===id);
+  if (!b) return;
+  const room = ROOMS.find(r=>r.id===b.roomId);
+  const isOwn = state.currentUser && (b.userId===state.currentUser.id || state.currentUser.role==='admin');
+
+  document.getElementById('detailContent').innerHTML = `
+    <div style="padding:4px 0;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+        <div style="width:8px;height:8px;border-radius:50%;background:${room.color};flex-shrink:0;"></div>
+        <span class="badge" style="background:${room.bg};color:${room.color};">${room.floor} ${room.name}</span>
+      </div>
+      <h4 style="font-size:18px;font-weight:700;color:#1e293b;margin-bottom:16px;">${b.topic}</h4>
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:8px 16px;font-size:13px;">
+        <span style="color:#94a3b8;font-weight:500;">日期</span><span style="color:#374151;">${fmtDisplay(b.date)}</span>
+        <span style="color:#94a3b8;font-weight:500;">時間</span><span style="color:#374151;">${b.startTime} ～ ${b.endTime}</span>
+        <span style="color:#94a3b8;font-weight:500;">申請人</span><span style="color:#374151;">${b.applicant}</span>
+        ${b.note?`<span style="color:#94a3b8;font-weight:500;">備註</span><span style="color:#374151;">${b.note}</span>`:''}
+      </div>
+    </div>
+  `;
+
+  document.getElementById('detailActions').innerHTML = `
+    <button class="btn btn-ghost btn-sm" onclick="closeDetailModal()">關閉</button>
+    ${isOwn ? `
+      <button class="btn btn-ghost btn-sm" onclick="editBookingFromDetail('${id}')">✏ 編輯</button>
+      <button class="btn btn-danger btn-sm" onclick="deleteBookingById('${id}')">刪除</button>
+    ` : ''}
+  `;
+
+  document.getElementById('detailModal').style.display='flex';
+}
+
+function editBookingFromDetail(id) {
+  closeDetailModal();
+  const b = state.bookings.find(x=>x.id===id);
+  if (!b) return;
+  populateTimeOptions();
+  document.getElementById('editBookingId').value = b.id;
+  document.getElementById('bkTopic').value = b.topic;
+  document.getElementById('bkApplicant').value = b.applicant;
+  document.getElementById('bkDate').value = b.date;
+  document.getElementById('bkRoom').value = b.roomId;
+  document.getElementById('bkStart').value = b.startTime;
+  document.getElementById('bkEnd').value = b.endTime;
+  document.getElementById('bkNote').value = b.note||'';
+  document.getElementById('modalTitle').textContent = '編輯預約';
+  document.getElementById('deleteBookingBtn').style.display='inline-flex';
+  document.getElementById('conflictWarning').style.display='none';
+  updateRoomInfo();
+  document.getElementById('bookingModal').style.display='flex';
+}
+
+function deleteBookingById(id) {
+  if (!confirm('確定刪除此預約？')) return;
+  state.bookings = state.bookings.filter(b=>b.id!==id);
+  saveData();
+  closeDetailModal();
+  showToast('預約已刪除');
+  switchView(state.currentView);
+}
+
+function closeDetailModal() {
+  document.getElementById('detailModal').style.display='none';
+}
+function closeDetailModalOutside(e) {
+  if(e.target===document.getElementById('detailModal')) closeDetailModal();
+}
+
+// ============================================================
+// EXPORT
+// ============================================================
+function exportCSV() {
+  const rows = [['日期','開始','結束','會議室','主題','申請人','備註']];
+  state.bookings
+    .sort((a,b)=>(a.date+a.startTime).localeCompare(b.date+b.startTime))
+    .forEach(b=>{
+      const r=ROOMS.find(x=>x.id===b.roomId);
+      rows.push([b.date,b.startTime,b.endTime,`${r.floor} ${r.name}`,b.topic,b.applicant,b.note||'']);
+    });
+  const csv = rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const bom = '\uFEFF';
+  const blob = new Blob([bom+csv],{type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `會議室預約_${fmt(new Date())}.csv`;
+  a.click(); URL.revokeObjectURL(url);
+  showToast('CSV 已匯出','success');
+}
+
+function exportICS() {
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//會議室預約系統//TW',
+    'CALSCALE:GREGORIAN',
+  ];
+  state.bookings.forEach(b=>{
+    const r = ROOMS.find(x=>x.id===b.roomId);
+    const dtStart = b.date.replace(/-/g,'')+'T'+b.startTime.replace(':','')+'00';
+    const dtEnd   = b.date.replace(/-/g,'')+'T'+b.endTime.replace(':','')+'00';
+    lines.push('BEGIN:VEVENT');
+    lines.push(`DTSTART:${dtStart}`);
+    lines.push(`DTEND:${dtEnd}`);
+    lines.push(`SUMMARY:${b.topic}`);
+    lines.push(`LOCATION:${r.floor} ${r.name}`);
+    lines.push(`DESCRIPTION:申請人: ${b.applicant}${b.note?' | '+b.note:''}`);
+    lines.push(`UID:mrb-${b.id}@system`);
+    lines.push('END:VEVENT');
+  });
+  lines.push('END:VCALENDAR');
+  const blob = new Blob([lines.join('\r\n')],{type:'text/calendar'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `會議室行事曆_${fmt(new Date())}.ics`;
+  a.click(); URL.revokeObjectURL(url);
+  showToast('行事曆已匯出','success');
+}
+
+// ============================================================
+// TOAST
+// ============================================================
+function showToast(msg, type='') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast' + (type?' '+type:'');
+  t.classList.add('show');
+  clearTimeout(window._toastTimer);
+  window._toastTimer = setTimeout(()=>t.classList.remove('show'),3000);
+}
+
+// ============================================================
+// KEYBOARD SHORTCUT
+// ============================================================
+document.addEventListener('keydown', e => {
+  if (e.key==='Escape') { closeModal(); closeDetailModal(); }
+  if (e.key==='n' && !e.ctrlKey && !e.metaKey && document.activeElement.tagName!=='INPUT' && document.activeElement.tagName!=='TEXTAREA') {
+    openNewBooking();
+  }
+});
+
+// Enter key on login
+document.addEventListener('DOMContentLoaded', ()=>{
+  document.getElementById('loginPassword')?.addEventListener('keydown', e=>{ if(e.key==='Enter') doLogin(); });
+  document.getElementById('loginEmail')?.addEventListener('keydown', e=>{ if(e.key==='Enter') doLogin(); });
+});
+
+// ============================================================
+// INIT
+// ============================================================
+loadData();
+if (checkSession()) {
+  startApp();
+} else {
+  document.getElementById('loginView').style.display = 'flex';
+  document.getElementById('appView').style.display = 'none';
+}
+</script>
+</body>
+</html>
