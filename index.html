@@ -389,12 +389,11 @@ function normalizeRow(obj) {
       continue;
     }
     
-    // 偵測日期物件或是 ISO 字串 (處理下午時間與跨日問題)
+    // 偵測日期與時間 (處理 Google Sheets 各種搞怪格式)
     if (typeof val === 'string' && val.includes('T') && val.endsWith('Z')) {
       const d = new Date(val);
       if (!isNaN(d.getTime())) {
         if (k === 'date') {
-          // 轉換為在地日期 YYYY-MM-DD
           out[k] = d.getFullYear() + '-' + 
                    String(d.getMonth() + 1).padStart(2, '0') + '-' + 
                    String(d.getDate()).padStart(2, '0');
