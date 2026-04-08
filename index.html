@@ -343,9 +343,11 @@ const ROOMS = [
 
 const TIME_SLOTS = [
   '08:30','09:00','09:30','10:00','10:30','11:00','11:30',
-  'LUNCH',
+  '12:00','12:30',
   '13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','17:30'
 ];
+
+const LUNCH_SLOTS = new Set(['12:00','12:30']);
 
 const WEEKDAYS = ['一','二','三','四','五'];
 
@@ -411,10 +413,8 @@ async function doLogin() {
   }
 }
 function doLogout() {
-  state.currentUser = null;
   sessionStorage.removeItem('mrb_session');
-  document.getElementById('appView').style.display = 'none';
-  document.getElementById('loginView').style.display = 'flex';
+  location.reload(); // 重新整理確保資料最新、state 完全清除
 }
 function checkSession() {
   const s = sessionStorage.getItem('mrb_session');
@@ -483,22 +483,22 @@ function timeToMins(t) {
 function minsToTime(m) {
   return `${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`;
 }
-function getTimeSlots() { return TIME_SLOTS.filter(t => t !== 'LUNCH'); }
+function getTimeSlots() { return TIME_SLOTS; }
+function isLunchSlot(t) { return LUNCH_SLOTS.has(t); }
 function slotIndex(t) { return getTimeSlots().indexOf(t); }
 
-// Calculate grid row span accounting for the LUNCH separator row
+// Calculate grid row span
 function calcGridSpan(startTime, endTime) {
   const startIdx = TIME_SLOTS.indexOf(startTime);
-  let endIdx = TIME_SLOTS.indexOf(endTime);
-  if (endIdx === -1) {
-    // e.g. endTime='12:00' not in TIME_SLOTS — treat it as just before LUNCH
-    const lunchIdx = TIME_SLOTS.indexOf('LUNCH');
-    endIdx = lunchIdx; // ends right at lunch separator
-  }
-  // Span = rows between startIdx and endIdx (both in TIME_SLOTS)
-  if (endIdx > startIdx) return endIdx - startIdx;
-  // Fallback: time-based (for afternoon-only or morning-only bookings)
+  const endIdx   = TIME_SLOTS.indexOf(endTime);
+  if (startIdx !== -1 && endIdx > startIdx) return endIdx - startIdx;
+  // Fallback: time-based
   return Math.max(1, Math.round((timeToMins(endTime) - timeToMins(startTime)) / 30));
+}
+
+// 安全取得會議室資料，找不到時回傳預設值
+function getRoom(roomId) {
+  return ROOMS.find(r => r.id === roomId) || { id: roomId, name: '未知會議室', floor: '?', color: '#94a3b8', bg: '#f1f5f9' };
 }
 
 // Booking overlaps another?
@@ -619,28 +619,21 @@ function renderWeekGrid(days, roomId) {
   });
 
   // Rows
-  slots.forEach((slot, si) => {
-    if (slot === 'LUNCH') {
-      html += `<div class="time-label" style="display:flex;align-items:center;justify-content:flex-end;padding-right:8px;font-size:10px;color:#94a3b8;background:#f8fafc;border-right:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;min-height:24px;">午休</div>`;
-      days.forEach(() => {
-        html += `<div class="grid-cell lunch" style="background:#f8fafc;min-height:24px;display:flex;align-items:center;justify-content:center;"><span style="font-size:10px;color:#cbd5e1;">── 午休時間 ──</span></div>`;
-      });
-      return;
-    }
+  slots.forEach((slot) => {
+    const lunch = isLunchSlot(slot);
+    const lunchStyle = lunch ? 'background:#fffbeb;' : '';
+    const lunchLabelStyle = lunch ? 'background:#fffbeb;color:#b45309;' : '';
 
     // Time label
-    html += `<div class="time-label">${slot}</div>`;
+    html += `<div class="time-label" style="${lunchLabelStyle}">${slot}${slot==='12:00'?'<div style="font-size:9px;color:#d97706;margin-top:1px;">午休</div>':''}</div>`;
 
     // Day cells
-    days.forEach((d, di) => {
+    days.forEach((d) => {
       const ds = fmt(d);
-      // Find booking that starts at this slot
       const bk = bookings.find(b => b.date === ds && b.startTime === slot);
       if (bk) {
-        // Calculate span (accounting for LUNCH separator row)
         const spans = calcGridSpan(bk.startTime, bk.endTime);
-        const room = ROOMS.find(r=>r.id===roomId);
-        const isOwn = state.currentUser && bk.userId === state.currentUser.id;
+        const room = getRoom(roomId);
         html += `
           <div class="grid-cell booked" style="position:relative;grid-row:span ${spans};" onclick="showBookingDetail('${bk.id}')">
             <div class="booking-bar" style="background:${room.bg};color:${room.color};border-left-color:${room.color};">
@@ -649,14 +642,12 @@ function renderWeekGrid(days, roomId) {
             </div>
           </div>`;
       } else {
-        // Check if this slot is covered by a spanning booking
-        const covered = bookings.find(b => {
-          if (b.date !== ds) return false;
-          if (b.startTime === slot) return false;
-          return timeToMins(b.startTime) < timeToMins(slot) && timeToMins(b.endTime) > timeToMins(slot);
-        });
+        const covered = bookings.find(b =>
+          b.date === ds && b.startTime !== slot &&
+          timeToMins(b.startTime) < timeToMins(slot) && timeToMins(b.endTime) > timeToMins(slot)
+        );
         if (!covered) {
-          html += `<div class="grid-cell" onclick="quickBook('${ds}','${slot}','${roomId}')">
+          html += `<div class="grid-cell" style="${lunchStyle}" onclick="quickBook('${ds}','${slot}','${roomId}')">
             <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;opacity:0;transition:.15s;" class="add-hint">
               <span style="font-size:16px;color:#3b82f6;">＋</span>
             </div>
@@ -711,7 +702,7 @@ function renderOverviewView() {
           value="${overviewDate}" onchange="overviewDateChange(this.value)">
         <button class="btn btn-ghost btn-sm" onclick="overviewToday()">今天</button>
         <button class="btn btn-ghost btn-sm" onclick="overviewNextDay()">後一天 →</button>
-        <button class="btn btn-primary btn-sm" onclick="openNewBooking('${overviewDate}')">＋ 新增預約</button>
+        <button class="btn btn-primary btn-sm" onclick="openNewBooking(overviewDate)">＋ 新增預約</button>
       </div>
     </div>
 
@@ -816,15 +807,11 @@ function renderOverviewGrid(date, rooms) {
   });
 
   slots.forEach(slot => {
-    if (slot === 'LUNCH') {
-      html += `<div class="time-label" style="background:#f8fafc;min-height:24px;display:flex;align-items:center;justify-content:flex-end;padding-right:8px;font-size:10px;color:#94a3b8;">午休</div>`;
-      rooms.forEach(() => {
-        html += `<div class="grid-cell lunch" style="min-height:24px;background:#f8fafc;"></div>`;
-      });
-      return;
-    }
+    const lunch = isLunchSlot(slot);
+    const lunchStyle = lunch ? 'background:#fffbeb;' : '';
+    const lunchLabelStyle = lunch ? 'background:#fffbeb;color:#b45309;' : '';
 
-    html += `<div class="time-label">${slot}</div>`;
+    html += `<div class="time-label" style="${lunchLabelStyle}">${slot}${slot==='12:00'?'<div style="font-size:9px;color:#d97706;margin-top:1px;">午休</div>':''}</div>`;
     rooms.forEach(r => {
       const bk = state.bookings.find(b => b.roomId===r.id && b.date===date && b.startTime===slot);
       const covered = state.bookings.find(b =>
@@ -840,7 +827,7 @@ function renderOverviewGrid(date, rooms) {
           </div>
         </div>`;
       } else if (!covered) {
-        html += `<div class="grid-cell" onclick="quickBook('${date}','${slot}','${r.id}')"></div>`;
+        html += `<div class="grid-cell" style="${lunchStyle}" onclick="quickBook('${date}','${slot}','${r.id}')"></div>`;
       }
     });
   });
@@ -866,7 +853,7 @@ function renderMyBookingsView() {
   const past     = myBks.filter(b => b.date < todayStr);
 
   function bkRow(b) {
-    const room = ROOMS.find(r=>r.id===b.roomId);
+    const room = getRoom(b.roomId);
     const isPast = b.date < todayStr;
     return `<div style="display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid #f1f5f9;transition:.15s;cursor:pointer;${isPast?'opacity:.6':''}"
       onmouseenter="this.style.background='#f8fafc'" onmouseleave="this.style.background=''"
@@ -1026,7 +1013,7 @@ function renderReportView() {
             ${filtered.length===0 ?
               `<tr><td colspan="5" style="padding:30px;text-align:center;color:#94a3b8;">無符合條件的紀錄</td></tr>` :
               filtered.map(b=>{
-                const r=ROOMS.find(x=>x.id===b.roomId);
+                const r=getRoom(b.roomId);
                 return `<tr style="border-bottom:1px solid #f1f5f9;cursor:pointer;" onclick="showBookingDetail('${b.id}')"
                   onmouseenter="this.style.background='#f8fafc'" onmouseleave="this.style.background=''">
                   <td style="padding:10px 12px;color:#374151;">${fmtDisplay(b.date)}</td>
@@ -1141,7 +1128,7 @@ function editUser(uid) {
   document.getElementById('uName').value=u.name;
   document.getElementById('uDept').value=u.dept||'';
   document.getElementById('uEmail').value=u.email;
-  document.getElementById('uPassword').value=u.password;
+  document.getElementById('uPassword').value=''; // 不顯示密碼，留空表示不更改
   document.getElementById('uRole').value=u.role;
   document.getElementById('userFormArea').scrollIntoView({behavior:'smooth'});
 }
@@ -1351,7 +1338,7 @@ function closeModalOutside(e) {
 function showBookingDetail(id) {
   const b = state.bookings.find(x=>x.id===id);
   if (!b) return;
-  const room = ROOMS.find(r=>r.id===b.roomId);
+  const room = getRoom(b.roomId);
   const isOwn = state.currentUser && (b.userId===state.currentUser.id || state.currentUser.role==='admin');
 
   document.getElementById('detailContent').innerHTML = `
@@ -1432,7 +1419,7 @@ function exportCSV() {
   state.bookings
     .sort((a,b)=>(a.date+a.startTime).localeCompare(b.date+b.startTime))
     .forEach(b=>{
-      const r=ROOMS.find(x=>x.id===b.roomId);
+      const r=getRoom(b.roomId);
       rows.push([b.date,b.startTime,b.endTime,`${r.floor} ${r.name}`,b.topic,b.applicant,b.note||'']);
     });
   const csv = rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
@@ -1453,7 +1440,7 @@ function exportICS() {
     'CALSCALE:GREGORIAN',
   ];
   state.bookings.forEach(b=>{
-    const r = ROOMS.find(x=>x.id===b.roomId);
+    const r = getRoom(b.roomId);
     const dtStart = b.date.replace(/-/g,'')+'T'+b.startTime.replace(':','')+'00';
     const dtEnd   = b.date.replace(/-/g,'')+'T'+b.endTime.replace(':','')+'00';
     lines.push('BEGIN:VEVENT');
