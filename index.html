@@ -389,7 +389,7 @@ function normalizeRow(obj) {
       continue;
     }
     
-    // 1. 處理 ISO 字串格式 (例如你提供的 2026-04-08T06:27:14.278Z)
+    // 1. 處理 ISO 字串格式 (2026-04-07T16:00:00.000Z)
     if (typeof val === 'string' && val.includes('T') && val.endsWith('Z')) {
       const d = new Date(val);
       if (!isNaN(d.getTime())) {
@@ -399,29 +399,18 @@ function normalizeRow(obj) {
                    String(d.getDate()).padStart(2, '0');
           continue;
         } else if (k === 'startTime' || k === 'endTime') {
-          // --- 自動對齊 30 分鐘格點 ---
-          let totalMins = d.getHours() * 60 + d.getMinutes();
-          // 將分鐘數四捨五入至最近的 30 分鐘
-          let snappedMins = Math.round(totalMins / 30) * 30;
-          let h = Math.floor(snappedMins / 60);
-          let m = snappedMins % 60;
-          out[k] = String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+          out[k] = String(d.getHours()).padStart(2, '0') + ':' + 
+                   String(d.getMinutes()).padStart(2, '0');
           continue;
         }
       }
     }
 
-    // 2. 處理普通時間字串 (例如 14:30:00)
+    // 2. 處理普通時間字串 (例如 14:30:00 或 14:30)
     if ((k === 'startTime' || k === 'endTime') && typeof val === 'string') {
       const parts = val.trim().split(':');
       if (parts.length >= 2) {
-        let h = parseInt(parts[0], 10);
-        let m = parseInt(parts[1], 10);
-        let totalMins = h * 60 + m;
-        let snappedMins = Math.round(totalMins / 30) * 30;
-        let sh = Math.floor(snappedMins / 60);
-        let sm = snappedMins % 60;
-        out[k] = String(sh).padStart(2, '0') + ':' + String(sm).padStart(2, '0');
+        out[k] = parts[0].padStart(2, '0') + ':' + parts[1].padStart(2, '0');
         continue;
       }
     }
@@ -661,31 +650,31 @@ function renderWeekGrid(days, roomId) {
   days.forEach((d,i) => {
     const ds = fmt(d);
     const today = isToday(ds);
-    html += `<div class="day-header ${today?'today':''}">
+    html += `<div class="day-header ${today?'today':''}" style="grid-column: ${i + 2}; grid-row: 1;">
       <div style="font-size:11px;color:${today?'#3b82f6':'#94a3b8'};font-weight:500;">週${WEEKDAYS[i]}</div>
       <div>${d.getMonth()+1}/${d.getDate()}</div>
     </div>`;
   });
 
   // Rows
-  slots.forEach((slot) => {
+  slots.forEach((slot, rowIndex) => {
     const lunch = isLunchSlot(slot);
     const lunchStyle = lunch ? 'background:#fffbeb;' : '';
     const lunchLabelStyle = lunch ? 'background:#fffbeb;color:#b45309;' : '';
 
     // Time label
     const isLunch = slot === '12:00' || slot === '12:30';
-    html += `<div class="time-label" style="${lunchLabelStyle}">${slot}${isLunch?'<div style="font-size:9px;color:#d97706;margin-top:1px;">午休</div>':''}</div>`;
+    html += `<div class="time-label" style="${lunchLabelStyle}; grid-column: 1; grid-row: ${rowIndex + 2};">${slot}${isLunch?'<div style="font-size:9px;color:#d97706;margin-top:1px;">午休</div>':''}</div>`;
 
     // Day cells
-    days.forEach((d) => {
+    days.forEach((d, i) => {
       const ds = fmt(d);
       const bk = bookings.find(b => b.date === ds && b.startTime === slot);
       if (bk) {
         const spans = calcGridSpan(bk.startTime, bk.endTime);
         const room = getRoom(roomId);
         html += `
-          <div class="grid-cell booked" style="position:relative;grid-row:span ${spans};" onclick="showBookingDetail('${bk.id}')">
+          <div class="grid-cell booked" style="position:relative; grid-column: ${i + 2}; grid-row: ${rowIndex + 2} / span ${spans};" onclick="showBookingDetail('${bk.id}')">
             <div class="booking-bar" style="background:${room.bg};color:${room.color};border-left-color:${room.color};">
               <div class="bk-topic">${bk.topic}</div>
               <div class="bk-user">${bk.startTime}~${bk.endTime}</div>
@@ -697,7 +686,7 @@ function renderWeekGrid(days, roomId) {
           timeToMins(b.startTime) < timeToMins(slot) && timeToMins(b.endTime) > timeToMins(slot)
         );
         if (!covered) {
-          html += `<div class="grid-cell" style="${lunchStyle}" onclick="quickBook('${ds}','${slot}','${roomId}')">
+          html += `<div class="grid-cell" style="${lunchStyle}; grid-column: ${i + 2}; grid-row: ${rowIndex + 2};" onclick="quickBook('${ds}','${slot}','${roomId}')">
             <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;opacity:0;transition:.15s;" class="add-hint">
               <span style="font-size:16px;color:#3b82f6;">＋</span>
             </div>
@@ -847,22 +836,22 @@ function renderOverviewGrid(date, rooms) {
   let html = `<div style="display:grid;grid-template-columns:64px repeat(${rooms.length},1fr);min-width:${100+rooms.length*120}px;">`;
 
   // Corner + Room headers
-  html += `<div class="corner-cell" style="height:44px;display:flex;align-items:center;justify-content:center;font-size:11px;color:#94a3b8;">時間</div>`;
-  rooms.forEach(r => {
-    html += `<div style="background:white;border-right:1px solid #e2e8f0;border-bottom:2px solid #e2e8f0;padding:8px 4px;text-align:center;position:sticky;top:0;z-index:10;">
+  html += `<div class="corner-cell" style="height:44px;display:flex;align-items:center;justify-content:center;font-size:11px;color:#94a3b8;grid-column:1;grid-row:1;">時間</div>`;
+  rooms.forEach((r, i) => {
+    html += `<div style="background:white;border-right:1px solid #e2e8f0;border-bottom:2px solid #e2e8f0;padding:8px 4px;text-align:center;position:sticky;top:0;z-index:10;grid-column:${i + 2};grid-row:1;">
       <div style="font-size:10px;color:${r.color};font-weight:700;">${r.floor}</div>
       <div style="font-size:13px;font-weight:600;color:#1e293b;">${r.name}</div>
       ${r.capacity?`<div style="font-size:10px;color:#94a3b8;">${r.capacity}人</div>`:''}
     </div>`;
   });
 
-  slots.forEach(slot => {
+  slots.forEach((slot, rowIndex) => {
     const lunch = isLunchSlot(slot);
     const lunchStyle = lunch ? 'background:#fffbeb;' : '';
     const lunchLabelStyle = lunch ? 'background:#fffbeb;color:#b45309;' : '';
 
-    html += `<div class="time-label" style="${lunchLabelStyle}">${slot}${slot==='12:00'?'<div style="font-size:9px;color:#d97706;margin-top:1px;">午休</div>':''}</div>`;
-    rooms.forEach(r => {
+    html += `<div class="time-label" style="${lunchLabelStyle};grid-column:1;grid-row:${rowIndex + 2};">${slot}${slot==='12:00'?'<div style="font-size:9px;color:#d97706;margin-top:1px;">午休</div>':''}</div>`;
+    rooms.forEach((r, roomIndex) => {
       const bk = state.bookings.find(b => b.roomId===r.id && b.date===date && b.startTime===slot);
       const covered = state.bookings.find(b =>
         b.roomId===r.id && b.date===date && b.startTime !== slot &&
@@ -870,14 +859,14 @@ function renderOverviewGrid(date, rooms) {
       );
       if (bk) {
         const spans = calcGridSpan(bk.startTime, bk.endTime);
-        html += `<div class="grid-cell booked" style="grid-row:span ${spans};" onclick="showBookingDetail('${bk.id}')">
+        html += `<div class="grid-cell booked" style="grid-column:${roomIndex + 2};grid-row:${rowIndex + 2} / span ${spans};" onclick="showBookingDetail('${bk.id}')">
           <div class="booking-bar" style="background:${r.bg};color:${r.color};border-left-color:${r.color};">
             <div class="bk-topic">${bk.topic}</div>
             <div class="bk-user">${bk.applicant}</div>
           </div>
         </div>`;
       } else if (!covered) {
-        html += `<div class="grid-cell" style="${lunchStyle}" onclick="quickBook('${date}','${slot}','${r.id}')"></div>`;
+        html += `<div class="grid-cell" style="${lunchStyle};grid-column:${roomIndex + 2};grid-row:${rowIndex + 2};" onclick="quickBook('${date}','${slot}','${r.id}')"></div>`;
       }
     });
   });
