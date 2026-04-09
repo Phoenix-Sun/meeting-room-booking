@@ -226,7 +226,7 @@
         <span class="icon">🗓</span> 今日總覽
       </div>
       <div class="nav-item" id="nav-mybookings" onclick="switchView('mybookings')">
-        <span class="icon">📋</span> 我的預約
+        <span class="icon">📋</span> 預約總覽
       </div>
       <div class="nav-item" id="nav-report" onclick="switchView('report')">
         <span class="icon">📊</span> 統計報表
@@ -235,7 +235,7 @@
         <span class="icon">⚙️</span> 帳號管理
       </div>
     </nav>
-    <div style="padding:12px 16px; border-top:1px solid rgba(255,255,255,.1);">
+    <div id="userFooter" style="padding:12px 16px; border-top:1px solid rgba(255,255,255,.1);">
       <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
         <div style="width:32px;height:32px;border-radius:50%;background:#008d41;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;" id="userAvatar">U</div>
         <div>
@@ -342,6 +342,8 @@
 // ============================================================
 // CONSTANTS & DATA
 // ============================================================
+const REQUIRE_LOGIN = false; // 是否需要登入，設為 false 即可免登入使用
+
 const ROOMS = [
   { id:'3f-large',      name:'大會議室',     floor:'3F',   type:'physical', capacity:null,  color:'#008d41', bg:'#e6f4ea' },
   { id:'3f-medium',     name:'中會議室',     floor:'3F',   type:'physical', capacity:null,  color:'#0891b2', bg:'#cffafe' },
@@ -483,8 +485,13 @@ function startApp() {
   document.getElementById('loginView').style.display = 'none';
   document.getElementById('appView').style.display = 'flex';
   document.getElementById('userName').textContent = state.currentUser.name;
-  document.getElementById('userEmail').textContent = state.currentUser.email;
+  document.getElementById('userEmail').textContent = state.currentUser.email || '-';
   document.getElementById('userAvatar').textContent = state.currentUser.name.charAt(0);
+  
+  if (!REQUIRE_LOGIN) {
+    document.getElementById('userFooter').style.display = 'none';
+  }
+
   if (state.currentUser.role === 'admin') {
     document.getElementById('nav-admin').style.display = 'flex';
   }
@@ -918,16 +925,15 @@ function renderOverviewGrid(date, rooms) {
 // ============================================================
 function renderMyBookingsView() {
   const mc = document.getElementById('mainContent');
-  const uid = state.currentUser.id;
   const now = new Date();
   const todayStr = fmt(now);
 
-  const myBks = state.bookings
-    .filter(b => b.userId === uid)
+  // 顯示所有人預約
+  const allBks = state.bookings
     .sort((a,b) => (a.date+a.startTime).localeCompare(b.date+b.startTime));
 
-  const upcoming = myBks.filter(b => b.date >= todayStr);
-  const past     = myBks.filter(b => b.date < todayStr);
+  const upcoming = allBks.filter(b => b.date >= todayStr);
+  const past     = allBks.filter(b => b.date < todayStr);
 
   function bkRow(b) {
     const room = getRoom(b.roomId);
@@ -952,8 +958,8 @@ function renderMyBookingsView() {
   mc.innerHTML = `<div class="fade-in">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
       <div>
-        <h2 style="font-size:24px;font-weight:700;color:#1e293b;">我的預約</h2>
-        <p style="font-size:15px;color:#64748b;margin-top:2px;">共 ${myBks.length} 筆</p>
+        <h2 style="font-size:24px;font-weight:700;color:#1e293b;">預約總覽</h2>
+        <p style="font-size:15px;color:#64748b;margin-top:2px;">系統共 ${allBks.length} 筆預約</p>
       </div>
       <button class="btn btn-primary btn-sm" onclick="openNewBooking()">＋ 新增預約</button>
     </div>
@@ -1030,10 +1036,6 @@ function renderReportView() {
       <div class="stat-card">
         <div class="stat-number">${todayBks.length}</div>
         <div class="stat-label">今日預約</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-number">${state.users.length}</div>
-        <div class="stat-label">使用人數</div>
       </div>
     </div>
 
@@ -1296,9 +1298,12 @@ function openNewBooking(date=null, time=null, roomId=null) {
   document.getElementById('deleteBookingBtn').style.display = 'none';
   
   // 自動帶入申請人姓名
-  if (state.currentUser) {
+  if (state.currentUser && REQUIRE_LOGIN) {
     document.getElementById('bkApplicant').value = state.currentUser.name;
     document.getElementById('bkApplicant').disabled = (state.currentUser.role !== 'admin');
+  } else {
+    document.getElementById('bkApplicant').value = '';
+    document.getElementById('bkApplicant').disabled = false;
   }
   document.getElementById('conflictWarning').style.display = 'none';
   updateRoomInfo();
@@ -1444,7 +1449,7 @@ function showBookingDetail(uiId) {
   const b = state.bookings.find(x=>x._uiId===uiId);
   if (!b) return;
   const room = getRoom(b.roomId);
-  const isOwn = state.currentUser && (b.userId===state.currentUser.id || state.currentUser.role==='admin');
+  const isOwn = !REQUIRE_LOGIN || (state.currentUser && (b.userId===state.currentUser.id || state.currentUser.role==='admin'));
 
   document.getElementById('detailContent').innerHTML = `
     <div style="padding:4px 0;">
@@ -1633,7 +1638,7 @@ async function handleDrop(e, targetDate, targetStartTime, targetRoomId) {
   if (!bk) return;
 
   // Check permissions (admin or owner)
-  const isOwn = state.currentUser && (bk.userId === state.currentUser.id || state.currentUser.role === 'admin');
+  const isOwn = !REQUIRE_LOGIN || (state.currentUser && (bk.userId === state.currentUser.id || state.currentUser.role === 'admin'));
   if (!isOwn) {
     showToast('您無權移動此預約', 'error');
     return;
@@ -1693,7 +1698,10 @@ async function handleDrop(e, targetDate, targetStartTime, targetRoomId) {
     return;
   }
   document.getElementById('loadingView').style.display = 'none';
-  if (checkSession()) {
+  if (!REQUIRE_LOGIN) {
+    state.currentUser = { id: 'guest', name: '預約使用者', role: 'user' };
+    startApp();
+  } else if (checkSession()) {
     startApp();
   } else {
     document.getElementById('loginView').style.display = 'flex';
