@@ -1371,35 +1371,40 @@ async function saveBooking() {
     if (!confirm(`此時段有衝突（${conflicts[0].topic}），確定仍要儲存？`)) return;
   }
 
-  const btn = document.querySelector('#bookingModal .btn-primary');
-  if (btn) { btn.disabled = true; btn.textContent = '儲存中...'; }
-
   const prevBookings = [...state.bookings];
+  let bookingData;
+
+  // 樂觀更新：立即變更記憶體中的狀態
+  if (editId) {
+    const i = state.bookings.findIndex(b=>b._uiId===editId);
+    state.bookings[i] = {...state.bookings[i], roomId, date, startTime:start, endTime:end, topic, applicant, note};
+    bookingData = {...state.bookings[i]};
+    delete bookingData._uiId;
+  } else {
+    const booking = {
+      id: 'b'+Date.now(), _uiId: 'bk_'+Date.now(), 
+      roomId, date, startTime:start, endTime:end,
+      topic, applicant, userId: state.currentUser.id, note,
+      createdAt: new Date().toISOString()
+    };
+    state.bookings.push(booking);
+    bookingData = booking;
+  }
+
+  // 立即關閉視窗並更新畫面
+  closeModal();
+  switchView(state.currentView);
+  showToast('正在同步...', 'info');
+
   try {
-    if (editId) {
-      const i = state.bookings.findIndex(b=>b._uiId===editId);
-      state.bookings[i] = {...state.bookings[i], roomId, date, startTime:start, endTime:end, topic, applicant, note};
-      // 傳回後端仍使用原始 id
-      const payload = {...state.bookings[i]};
-      delete payload._uiId; 
-      await apiCall({ action: 'editBooking', data: JSON.stringify(payload) });
-    } else {
-      const booking = {
-        id: 'b'+Date.now(), _uiId: 'bk_'+Date.now(), 
-        roomId, date, startTime:start, endTime:end,
-        topic, applicant, userId: state.currentUser.id, note,
-        createdAt: new Date().toISOString()
-      };
-      state.bookings.push(booking);
-      await apiCall({ action: 'addBooking', data: JSON.stringify(booking) });
-    }
-    closeModal();
-    showToast(editId?'預約已更新':'預約成功 ✓','success');
-    switchView(state.currentView);
+    const action = editId ? 'editBooking' : 'addBooking';
+    await apiCall({ action, data: JSON.stringify(bookingData) });
+    showToast(editId ? '預約已更新' : '預約成功 ✓', 'success');
   } catch(e) {
+    // 發生錯誤時復原狀態並重繪
     state.bookings = prevBookings;
-    showToast('儲存失敗：' + e.message, 'error');
-    if (btn) { btn.disabled = false; btn.textContent = '儲存預約'; }
+    switchView(state.currentView);
+    showToast('同步失敗：' + e.message, 'error');
   }
 }
 
