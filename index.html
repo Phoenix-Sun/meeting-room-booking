@@ -187,7 +187,7 @@
   <div id="loadingError" style="display:none;padding:16px 24px;background:white;border-radius:12px;border:1px solid #fecaca;color:#dc2626;font-size:13px;text-align:center;max-width:340px;line-height:1.6;">
     <div style="font-size:24px;margin-bottom:8px;">⚠️</div>
     無法連接到 Google Sheets。<br>
-    請確認 <strong>APPS_SCRIPT_URL</strong> 環境變數已在 Vercel 設定，<br>並重新部署後再試。
+    請確認 GitHub Actions 已正確注入 APPS_SCRIPT_URL，<br>並嘗試重新整理頁面。
   </div>
 </div>
 
@@ -278,7 +278,7 @@
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
         <div>
           <label class="form-label">日期</label>
-          <input id="bkDate" class="form-input" type="date">
+          <input id="bkDate" class="form-input" type="date" onchange="checkConflictPreview()">
         </div>
         <div>
           <label class="form-label">會議室</label>
@@ -384,7 +384,7 @@ let state = {
 // API (Google Sheets via /api/sheets proxy or direct GAS URL)
 // ============================================================
 // 注入點：已直接寫入真實 GAS URL 以確保 GitHub Pages 兼容性
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbymhiqAg2kD53VyMo64PnXgg95qvSiuAmNWkdtqwh1cG5whWOXRY-6C-euKj5dSQMpfMA/exec'; 
+const APPS_SCRIPT_URL = ''; // 由 GitHub Actions 在部署時注入（本地開發請手動填入真實 URL）
 
 async function apiCall(params) {
   const qs = new URLSearchParams(params).toString();
@@ -719,8 +719,8 @@ function renderWeekGrid(days, roomId) {
           timeToMins(b.startTime) < timeToMins(slot) && timeToMins(b.endTime) > timeToMins(slot)
         );
         if (!covered) {
-          html += `<div class="grid-cell" 
-            style="${lunchStyle} grid-column: ${i + 2}; grid-row: ${rowIndex + 2};" 
+          html += `<div class="grid-cell"
+            style="${lunchStyle} grid-column: ${i + 2}; grid-row: ${rowIndex + 2};"
             onclick="quickBook('${ds}','${slot}','${roomId}')"
             ondragover="handleDragOver(event)"
             ondragleave="handleDragLeave(event)"
@@ -908,8 +908,8 @@ function renderOverviewGrid(date, rooms) {
           </div>
         </div>`;
       } else if (!covered) {
-        html += `<div class="grid-cell" 
-          style="${lunchStyle};grid-column:${roomIndex + 2};grid-row:${rowIndex + 2};" 
+        html += `<div class="grid-cell"
+          style="${lunchStyle};grid-column:${roomIndex + 2};grid-row:${rowIndex + 2};"
           onclick="quickBook('${date}','${slot}','${r.id}')"
           ondragover="handleDragOver(event)"
           ondragleave="handleDragLeave(event)"
@@ -1286,6 +1286,7 @@ function resetModal() {
 }
 
 function openNewBooking(date=null, time=null, roomId=null) {
+  populateTimeOptions();
   resetModal();
   if (date) document.getElementById('bkDate').value = date;
   if (time) document.getElementById('bkStart').value = time;
@@ -1653,7 +1654,7 @@ async function handleDrop(e, targetDate, targetStartTime, targetRoomId) {
   const targetEndTime = minsToTime(newEndMins);
 
   // Validate end time is within standard slots
-  if (newEndMins > timeToMins(TIME_SLOTS[TIME_SLOTS.length - 1]) + 30) {
+  if (newEndMins > timeToMins(TIME_SLOTS[TIME_SLOTS.length - 1])) {
     showToast('移動位置超出時間範圍', 'error');
     return;
   }
